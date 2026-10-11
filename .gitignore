@@ -41,6 +41,8 @@ key.bin
 *.sqlite
 *.sqlite3
 agent_state.db
+data/
+agent_data/
 
 # IDEs & Editors
 .vscode/
