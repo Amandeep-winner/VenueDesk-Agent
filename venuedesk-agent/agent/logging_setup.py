@@ -5,18 +5,29 @@ import re
 from typing import Any
 
 TOKEN_PATTERN = re.compile(r"PAIR-[A-Za-z0-9_-]+")
+SECRET_PATTERN = re.compile(r"(?i)\b(bearer|token|secret|password|private_key)(?:\s*[:=]|\s+)\s*['\"]?([A-Za-z0-9_\-\.\/+=]{8,})['\"]?")
 HEX_KEY_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 
 
 class RedactingFilter(logging.Filter):
-    """Filter that redacts sensitive pairing tokens and raw keys from log records."""
+    """Filter that redacts sensitive pairing tokens, bearer secrets, and raw keys from log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
             record.msg = self.redact(record.msg)
         if record.args:
             if isinstance(record.args, dict):
-                record.args = {k: self.redact(v) if isinstance(v, str) else v for k, v in record.args.items()}
+                def _redact_dict_val(key: str, val: Any) -> Any:
+                    if isinstance(val, str):
+                        redacted = self.redact(val)
+                        if any(s in str(key).lower() for s in ("password", "secret")) and redacted == val:
+                            return "[REDACTED]"
+                        return redacted
+                    if any(s in str(key).lower() for s in ("password", "secret", "token", "key")):
+                        return "[REDACTED]"
+                    return val
+
+                record.args = {k: _redact_dict_val(k, v) for k, v in record.args.items()}
             elif isinstance(record.args, (list, tuple)):
                 record.args = tuple(self.redact(v) if isinstance(v, str) else v for v in record.args)
         return True
@@ -24,6 +35,7 @@ class RedactingFilter(logging.Filter):
     @classmethod
     def redact(cls, text: str) -> str:
         text = TOKEN_PATTERN.sub("PAIR-[REDACTED]", text)
+        text = SECRET_PATTERN.sub(r"\1 [REDACTED]", text)
         return text
 
 

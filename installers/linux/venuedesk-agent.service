@@ -1,0 +1,38 @@
+[Unit]
+Description=VenueDesk Endpoint Telemetry and Inventory Agent
+Documentation=https://github.com/cbms/venuedesk-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=venuedesk
+Group=venuedesk
+
+# Root-owned pre-start helper to refresh privileged hardware evidence cache
+ExecStartPre=-/usr/local/bin/venuedesk-evidence-helper
+ExecStart=/opt/venuedesk-agent/bin/python -m agent.main run --config /etc/venuedesk/config.toml
+
+Restart=always
+RestartSec=30
+TimeoutStopSec=15
+
+# Security sandbox hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Filesystem permissions
+ReadWritePaths=/var/lib/venuedesk-agent /var/log/venuedesk-agent
+ReadOnlyPaths=/etc/venuedesk
+
+[Install]
+WantedBy=multi-user.target

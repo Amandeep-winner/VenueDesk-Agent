@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# VenueDesk Privileged Evidence Helper
+# Runs as root before unprivileged agent start to cache hardware identifiers.
+set -euo pipefail
+
+CACHE_DIR="/var/lib/venuedesk-agent"
+CACHE_FILE="${CACHE_DIR}/evidence_cache.json"
+
+mkdir -p "${CACHE_DIR}"
+
+read_dmi() {
+    local path="/sys/class/dmi/id/$1"
+    if [[ -r "${path}" ]]; then
+        cat "${path}" | tr -d '\r\n'
+    else
+        echo ""
+    fi
+}
+
+UUID=$(read_dmi "product_uuid")
+BIOS_SERIAL=$(read_dmi "bios_serial" || read_dmi "chassis_serial")
+BOARD_SERIAL=$(read_dmi "board_serial")
+
+cat <<EOF > "${CACHE_FILE}.tmp"
+{
+  "machine_uuid": "${UUID}",
+  "bios_serial": "${BIOS_SERIAL}",
+  "motherboard_serial": "${BOARD_SERIAL}",
+  "cached_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+mv "${CACHE_FILE}.tmp" "${CACHE_FILE}"
+chown root:venuedesk "${CACHE_FILE}"
+chmod 0640 "${CACHE_FILE}"

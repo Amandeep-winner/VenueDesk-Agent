@@ -16,6 +16,7 @@ This document tracks all architectural, design, and implementation decisions mad
 | 2026-10-11 | Phase 8 Recovery and Verification Workflows | Implemented OS reinstall recovery, physical verification, and motherboard replacement workflows per spec §4.8 and §25. |
 | 2026-10-11 | Phase 9 Remote Jobs and Secure Execution | Implemented allowlisted remote job service, dispatch/poll/result API, agent executor, and strict shell=False security invariants per spec §4.10. |
 | 2026-10-11 | Phase 10 Server-Rendered Admin Infrastructure UI | Built Bootstrap 5 UI under /admin/infrastructure/ with CSRF protection, RBAC checks, spec §42/§43/§44 blocks, Chart.js sparkline, pairing token generation, and approval queues. |
+| 2026-10-11 | Phase 11 Packaging, Deployment, and Hardening | Created Linux systemd sandboxed service, evidence cache helper, Windows service installer, production Dockerfile, RUNBOOK.md, and THREAT_MODEL.md. |
 
 ## Phase 8 Details
 
@@ -56,5 +57,17 @@ The asset pairing view generates single-use pairing tokens shown exactly once wi
 The identity changes and recovery queue surfaces deviations and enables one-click approval workflows.
 The physical verification form captures auditor observations per specification section 57.
 The audit log viewer displays immutable compliance trails with old and new state diffs.
+
+## Phase 11 Details
+
+Created production packaging and deployment installers for Linux and Windows endpoints.
+The Linux systemd service unit runs under a dedicated `venuedesk` unprivileged user with strict sandbox restrictions.
+A root-owned pre-start helper refreshes hardware DMI identifiers to a restricted cache file before unprivileged agent startup.
+The Windows installer configures `C:\ProgramData\VenueDesk` with restrictive NTFS ACL permissions and registers the service wrapper.
+Created production Dockerfile and environment templates enforcing HTTPS and secure cookies.
+The agent enforces HTTPS server endpoints and rejects unencrypted connections unless explicitly overridden for local development.
+Logging setup applies structured filtering that redacts pairing tokens and secrets from messages and argument dictionaries.
+Documented operational procedures in `RUNBOOK.md` and detailed security controls in `THREAT_MODEL.md`.
+
 
 
