@@ -1,0 +1,82 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Audit Logs{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h3 class="fw-bold mb-1">Append-Only Audit Logs</h3>
+    <p class="text-muted small mb-0">Immutable compliance audit trail tracking all lifecycle, identity, and security events</p>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">Action</label>
+                <select name="action" class="form-select form-select-sm">
+                    <option value="">All Actions</option>
+                    {% for a in all_actions %}
+                        <option value="{{ a }}" {% if filter_action == a %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">Actor / Entity ID</label>
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="Search actor or entity..." value="{{ filter_q or '' }}">
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-dark btn-sm flex-grow-1">Filter</button>
+                <a href="{{ url_for('admin_infra.audit_logs_view') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Audit Log Table -->
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+            <thead class="table-light text-uppercase">
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Actor</th>
+                    <th>Entity</th>
+                    <th>Changes / Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="text-muted text-nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') if log.timestamp else 'N/A' }}</td>
+                    <td>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">
+                            {{ log.action.value if hasattr(log.action, 'value') else log.action }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="fw-semibold">{{ log.actor_id }}</span>
+                        <span class="text-muted small">({{ log.actor_type.value if hasattr(log.actor_type, 'value') else log.actor_type }})</span>
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-dark border">{{ log.entity_type }}: {{ log.entity_id }}</span>
+                    </td>
+                    <td>
+                        {% if log.new_value or log.old_value %}
+                            <div class="font-monospace small text-muted">
+                                {% if log.old_value %}<div><span class="text-danger">- Old:</span> {{ log.old_value | tojson }}</div>{% endif %}
+                                {% if log.new_value %}<div><span class="text-success">+ New:</span> {{ log.new_value | tojson }}</div>{% endif %}
+                            </div>
+                        {% else %}
+                            <span class="text-muted fst-italic">None</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center py-4 text-muted">No audit logs recorded matching criteria.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

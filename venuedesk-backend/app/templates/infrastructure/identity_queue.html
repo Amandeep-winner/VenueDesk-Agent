@@ -1,0 +1,112 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Identity & Recovery Queue{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h3 class="fw-bold mb-1">Identity Changes & Recovery Queue</h3>
+    <p class="text-muted small mb-0">Endpoints requiring administrative review following hardware modifications or OS re-installation</p>
+</div>
+
+<!-- Section 1: Pending Hardware Identity Changes -->
+<div class="card border-0 shadow-sm mb-5">
+    <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shield-exclamation me-2 text-danger"></i>Hardware Identity Changes (Spec §42 Alert Panel)</span>
+        <span class="badge bg-danger">{{ pending_hardware_changes | length }} pending</span>
+    </div>
+    <div class="card-body">
+        {% for dev in pending_hardware_changes %}
+        <div class="alert alert-danger border-danger shadow-sm mb-4" role="alert">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-bold fs-6">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>IDENTITY CHANGE DETECTED — Device {{ dev.device_id }}
+                </div>
+                <span class="badge bg-danger">PENDING_REVERIFICATION</span>
+            </div>
+            <p class="small text-muted mb-3">
+                Material hardware changes observed relative to the trusted hardware baseline snapshot. Administrator confirmation required.
+            </p>
+
+            <div class="row g-2 small mb-3">
+                <div class="col-md-6">
+                    <span class="text-muted">Observed Fingerprint:</span>
+                    <span class="font-monospace">{{ dev.latest_snapshot.fingerprint[:16] if dev.latest_snapshot else 'N/A' }}...</span>
+                </div>
+                <div class="col-md-6">
+                    <span class="text-muted">Captured At:</span>
+                    <span>{{ dev.latest_snapshot.captured_at.strftime('%Y-%m-%d %H:%M:%S UTC') if dev.latest_snapshot else 'N/A' }}</span>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <form method="POST" action="{{ url_for('admin_infra.approve_hardware_change_view', device_id=dev.device_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success btn-sm">
+                        <i class="bi bi-check-lg me-1"></i>Approve Hardware Change
+                    </button>
+                </form>
+                <a href="{{ url_for('admin_infra.device_detail', device_id=dev.device_id) }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-search me-1"></i>Investigate Details
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0 small text-center py-3">No pending hardware identity deviations. All active endpoints match their verified baselines.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Section 2: OS Reinstall Recovery Queue -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrow-repeat me-2 text-primary"></i>OS Reinstall Recovery Requests (Spec §4.8)</span>
+        <span class="badge bg-primary">{{ recovery_requests | length }} pending</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Request ID</th>
+                    <th>Matched Device ID</th>
+                    <th>Linked Asset</th>
+                    <th>New Agent Instance</th>
+                    <th>Requested At</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in recovery_requests %}
+                <tr>
+                    <td class="font-monospace fw-bold">#{{ req.id }}</td>
+                    <td>
+                        <a href="{{ url_for('admin_infra.device_detail', device_id=req.device.device_id) }}" class="font-monospace text-decoration-none">
+                            {{ req.device.device_id }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if req.device.links %}
+                            {% for l in req.device.links if l.relationship_status.value == 'ACTIVE' %}
+                                {{ l.asset.asset_tag or l.asset.asset_id }}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted fst-italic">None</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="font-monospace text-muted">{{ req.new_agent_instance_id[:12] }}...</span></td>
+                    <td class="text-muted">{{ req.created_at.strftime('%Y-%m-%d %H:%M UTC') if req.created_at else 'N/A' }}</td>
+                    <td class="text-end">
+                        <form method="POST" action="{{ url_for('admin_infra.approve_recovery_view', device_id=req.device.device_id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-check2-circle me-1"></i>Approve Recovery
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No pending OS reinstall recovery requests.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

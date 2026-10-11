@@ -1,0 +1,109 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Institutional Assets{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1">Institutional Assets</h3>
+        <p class="text-muted small mb-0">Assets registry and endpoint pairing token provisioning</p>
+    </div>
+</div>
+
+{% if generated_token_data %}
+<!-- Single-Use Token Modal/Banner (Shown Once Only) -->
+<div class="alert alert-warning border-warning shadow-sm mb-4 p-4" role="alert">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
+        <h5 class="alert-heading fw-bold mb-0">Single-Use Pairing Token Generated</h5>
+    </div>
+    <p class="small text-muted mb-3">
+        Copy this token now. For security, this raw secret is <strong>never displayed again</strong> and only a secure cryptographic hash is preserved in the database.
+    </p>
+
+    <div class="row g-3 align-items-center mb-3">
+        <div class="col-md-8">
+            <label class="form-label small fw-semibold">Pairing Token (Scoped to Asset: {{ generated_token_data.asset_id }})</label>
+            <div class="input-group">
+                <input type="text" id="rawTokenInput" class="form-control font-monospace" value="{{ generated_token_data.raw_token }}" readonly>
+                <button class="btn btn-outline-dark" type="button" onclick="navigator.clipboard.writeText(document.getElementById('rawTokenInput').value)">
+                    <i class="bi bi-clipboard me-1"></i>Copy
+                </button>
+            </div>
+            <div class="form-text small text-muted">Expires at: {{ generated_token_data.expires_at }}</div>
+
+            <label class="form-label small fw-semibold mt-3">CLI Command Snippet</label>
+            <div class="input-group">
+                <input type="text" id="cliCommandInput" class="form-control font-monospace small bg-light" value="{{ generated_token_data.cli_command }}" readonly>
+                <button class="btn btn-outline-dark" type="button" onclick="navigator.clipboard.writeText(document.getElementById('cliCommandInput').value)">
+                    <i class="bi bi-clipboard me-1"></i>Copy
+                </button>
+            </div>
+        </div>
+        {% if generated_token_data.qr_base64 %}
+        <div class="col-md-4 text-center">
+            <label class="form-label small fw-semibold d-block">Quick Enrollment QR Code</label>
+            <img src="data:image/svg+xml;base64,{{ generated_token_data.qr_base64 }}" alt="Enrollment QR Code" class="img-thumbnail shadow-sm bg-white" style="max-width: 150px;">
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light small text-uppercase">
+                <tr>
+                    <th>Asset ID</th>
+                    <th>Asset Tag</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Verification</th>
+                    <th>Linked Device</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asset in assets %}
+                <tr>
+                    <td class="font-monospace fw-bold">{{ asset.asset_id }}</td>
+                    <td>{{ asset.asset_tag or 'N/A' }}</td>
+                    <td><span class="badge bg-light text-dark border">{{ asset.asset_type.value }}</span></td>
+                    <td><span class="badge bg-info text-dark">{{ asset.lifecycle_status.value }}</span></td>
+                    <td>
+                        {% if asset.verification_status.value == 'VERIFIED' %}
+                            <span class="badge bg-success">VERIFIED</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ asset.verification_status.value }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if asset.active_device %}
+                            <a href="{{ url_for('admin_infra.device_detail', device_id=asset.active_device.device_id) }}" class="font-monospace text-decoration-none">
+                                {{ asset.active_device.device_id }}
+                            </a>
+                        {% else %}
+                            <span class="text-muted fst-italic">None (Unpaired)</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <form method="POST" action="{{ url_for('admin_infra.generate_asset_token_view', asset_id=asset.asset_id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-outline-primary btn-sm" title="Generate New Pairing Token">
+                                <i class="bi bi-key me-1"></i>Generate Token
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">
+                        No institutional assets found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

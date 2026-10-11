@@ -1,0 +1,62 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Unclaimed Endpoints{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1">Unclaimed Devices Discovery</h3>
+        <p class="text-muted small mb-0">Endpoints discovered without a pre-provisioned pairing token awaiting asset mapping</p>
+    </div>
+    <a href="{{ url_for('admin_infra.devices_list') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Devices
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light small text-uppercase">
+                <tr>
+                    <th>Device ID</th>
+                    <th>Observed Hostname</th>
+                    <th>IP Addresses</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                    <th>Pair to Institutional Asset</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dev in unclaimed_devices %}
+                <tr>
+                    <td class="font-monospace fw-bold">{{ dev.device_id }}</td>
+                    <td>{{ dev.inventory.hostname if dev.inventory else 'Unknown' }}</td>
+                    <td class="small font-monospace">{{ (dev.inventory.ip_addresses | join(', ')) if (dev.inventory and dev.inventory.ip_addresses) else 'N/A' }}</td>
+                    <td class="small text-muted">{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') if dev.first_seen else 'N/A' }}</td>
+                    <td class="small text-muted">{{ dev.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC') if dev.last_seen else 'N/A' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_infra.pair_unclaimed_view', device_id=dev.device_id) }}" class="d-flex gap-2">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <select name="asset_id" class="form-select form-select-sm" style="max-width: 260px;" required>
+                                <option value="">Select unlinked asset...</option>
+                                {% for a in available_assets %}
+                                    <option value="{{ a.asset_id }}">{{ a.asset_tag or a.asset_id }} ({{ a.asset_id }})</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-primary btn-sm text-nowrap">
+                                <i class="bi bi-link-45deg me-1"></i>Pair Asset
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">
+                        No unclaimed devices discovered. All endpoints are mapped to institutional assets.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

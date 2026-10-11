@@ -1,0 +1,64 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Verify Device {{ device.device_id }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shield-check me-2 text-primary"></i>Physical Verification Form (Spec §57)</span>
+                <span class="badge bg-warning text-dark">{{ device.device_id }}</span>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted small mb-4">
+                    Performing physical verification confirms that the endpoint host matches its institutional asset tag and location. This marks the latest hardware identity snapshot as trusted, sets device status to ACTIVE, and transitions asset lifecycle status to IN_SERVICE.
+                </p>
+
+                <form method="POST" action="{{ url_for('admin_infra.verify_device_submit', device_id=device.device_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Verification Method</label>
+                        <select name="verification_method" class="form-select" required>
+                            <option value="ADMIN_CONFIRMATION">ADMIN_CONFIRMATION (In-person visual inspection)</option>
+                            <option value="QR_SCAN">QR_SCAN (Physical asset QR badge scanned)</option>
+                            <option value="SERIAL_CHECK">SERIAL_CHECK (Chassis/motherboard serial audit)</option>
+                            <option value="ENROLLMENT_TOKEN">ENROLLMENT_TOKEN (Authenticated pairing confirmation)</option>
+                        </select>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Observed Asset Tag</label>
+                            <input type="text" name="observed_asset_tag" class="form-control" placeholder="e.g. LAB-PC-42" value="{{ asset.asset_tag if asset else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Observed Serial Number</label>
+                            <input type="text" name="observed_serial" class="form-control" placeholder="e.g. SN-98765432">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Observed Physical Location</label>
+                        <input type="text" name="observed_location" class="form-control" placeholder="Building A, Room 302, Bench 4" value="{{ asset.location_label if asset else '' }}">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label small fw-semibold">Auditor Notes</label>
+                        <textarea name="notes" class="form-control" rows="3" placeholder="Confirming hardware baseline and physical chassis tag intact..."></textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('admin_infra.device_detail', device_id=device.device_id) }}" class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check2-circle me-1"></i>Confirm Physical Verification
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

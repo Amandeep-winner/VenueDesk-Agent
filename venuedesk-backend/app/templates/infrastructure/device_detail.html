@@ -1,0 +1,418 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Device {{ device.device_id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1 small">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_infra.devices_list') }}">Devices</a></li>
+                <li class="breadcrumb-item active">{{ device.device_id }}</li>
+            </ol>
+        </nav>
+        <h3 class="fw-bold mb-0 d-flex align-items-center gap-2">
+            <span>{{ device.device_id }}</span>
+            {% if device.status.value == 'ACTIVE' %}
+                <span class="badge bg-success fs-6">ACTIVE</span>
+            {% elif device.status.value == 'OFFLINE' %}
+                <span class="badge bg-secondary fs-6">OFFLINE</span>
+            {% elif device.status.value in ('PENDING_VERIFICATION', 'PENDING_REVERIFICATION') %}
+                <span class="badge bg-warning text-dark fs-6">{{ device.status.value }}</span>
+            {% else %}
+                <span class="badge bg-danger fs-6">{{ device.status.value }}</span>
+            {% endif %}
+        </h3>
+    </div>
+    <div class="d-flex gap-2">
+        {% if device.status.value in ('PENDING_VERIFICATION', 'PENDING_REVERIFICATION') %}
+        <a href="{{ url_for('admin_infra.verify_device_view', device_id=device.device_id) }}" class="btn btn-warning btn-sm">
+            <i class="bi bi-shield-check me-1"></i>Verify Physical Device
+        </a>
+        {% endif %}
+        <a href="#jobs-section" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-terminal me-1"></i>Remote Jobs
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Left Column: Asset & Physical Device & Current State -->
+    <div class="col-lg-6">
+        <!-- Asset Block (Spec §42) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-box-seam me-2 text-primary"></i>Institutional Asset Mapping</span>
+                {% if active_link and active_link.asset %}
+                    <span class="badge bg-primary-subtle text-primary border">{{ active_link.asset.asset_id }}</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if active_link and active_link.asset %}
+                    {% set asset = active_link.asset %}
+                    <div class="row g-2 small">
+                        <div class="col-6"><span class="text-muted">Asset Tag:</span> <span class="fw-bold">{{ asset.asset_tag or 'N/A' }}</span></div>
+                        <div class="col-6"><span class="text-muted">Asset Type:</span> <span class="fw-semibold">{{ asset.asset_type.value }}</span></div>
+                        <div class="col-6"><span class="text-muted">Lifecycle Status:</span> <span class="badge bg-info text-dark">{{ asset.lifecycle_status.value }}</span></div>
+                        <div class="col-6"><span class="text-muted">Verification:</span> <span class="badge bg-secondary">{{ asset.verification_status.value }}</span></div>
+                        <div class="col-6"><span class="text-muted">Assigned To:</span> {{ asset.assigned_to or 'Unassigned' }}</div>
+                        <div class="col-6"><span class="text-muted">Linked Since:</span> {{ active_link.linked_at.strftime('%Y-%m-%d %H:%M') if active_link.linked_at else 'N/A' }}</div>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0 small">No institutional asset currently linked to this endpoint.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Physical Device Block (Spec §42) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold">
+                <i class="bi bi-cpu me-2 text-primary"></i>Physical Device Identity
+            </div>
+            <div class="card-body small">
+                <div class="row g-2">
+                    <div class="col-6"><span class="text-muted">Device ID:</span> <span class="font-monospace fw-bold">{{ device.device_id }}</span></div>
+                    <div class="col-6"><span class="text-muted">Credential Version:</span> v{{ device.credential_version }}</div>
+                    <div class="col-6"><span class="text-muted">Endpoint Type:</span> {{ device.endpoint_type.value }}</div>
+                    <div class="col-6"><span class="text-muted">First Seen:</span> {{ device.first_seen.strftime('%Y-%m-%d %H:%M') if device.first_seen else 'N/A' }}</div>
+                    <div class="col-6"><span class="text-muted">Last Seen:</span> {{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC') if device.last_seen else 'N/A' }}</div>
+                    <div class="col-6"><span class="text-muted">Last Verified:</span> {{ device.last_verified_at.strftime('%Y-%m-%d %H:%M') if device.last_verified_at else 'Never' }}</div>
+                    <div class="col-12 mt-2">
+                        <span class="text-muted">Public Key:</span>
+                        <div class="font-monospace small text-truncate code-box mt-1">{{ device.device_public_key }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current State & Telemetry Block (Spec §42) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-activity me-2 text-primary"></i>Current Technical State & Telemetry</span>
+                {% if telemetry_samples %}
+                    <span class="badge bg-success-subtle text-success">Live Metrics</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if latest_telemetry %}
+                    <div class="row g-3 text-center mb-3">
+                        <div class="col-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">CPU</div>
+                                <div class="fs-5 fw-bold">{{ "%.1f"|format(latest_telemetry.cpu_percent) }}%</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">RAM</div>
+                                <div class="fs-5 fw-bold">{{ "%.1f"|format(latest_telemetry.memory_percent) }}%</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">Disk</div>
+                                <div class="fs-5 fw-bold">{{ "%.1f"|format(latest_telemetry.disk_percent) }}%</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">Uptime</div>
+                                <div class="fs-6 fw-bold">{{ (latest_telemetry.uptime // 3600)|int }}h</div>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-3">No telemetry samples received yet.</p>
+                {% endif %}
+
+                <!-- Sparkline Chart -->
+                <div>
+                    <label class="form-label small fw-semibold text-muted">CPU & Memory Utilization History</label>
+                    <div style="height: 120px;">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Hardware & OS Installations & Identity History -->
+    <div class="col-lg-6">
+        <!-- Hardware Block (Spec §42) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold">
+                <i class="bi bi-hdd-network me-2 text-primary"></i>Observed Hardware Inventory
+            </div>
+            <div class="card-body small">
+                {% if inventory %}
+                    <div class="row g-2">
+                        <div class="col-6"><span class="text-muted">Hostname:</span> <span class="fw-semibold">{{ inventory.hostname or 'N/A' }}</span></div>
+                        <div class="col-6"><span class="text-muted">CPU Cores:</span> {{ inventory.cpu_cores or 'N/A' }}</div>
+                        <div class="col-12"><span class="text-muted">CPU Model:</span> {{ inventory.cpu_model or 'N/A' }}</div>
+                        <div class="col-6"><span class="text-muted">RAM Total:</span> {{ (inventory.ram_total_mb // 1024) if inventory.ram_total_mb else 'N/A' }} GB</div>
+                        <div class="col-6"><span class="text-muted">BIOS Version:</span> {{ inventory.bios_version or 'N/A' }}</div>
+                        <div class="col-6"><span class="text-muted">TPM Present:</span> {{ 'Yes' if inventory.tpm_present else 'No' }}</div>
+                        <div class="col-6"><span class="text-muted">Agent Version:</span> v{{ inventory.agent_version or 'N/A' }}</div>
+                        <div class="col-12"><span class="text-muted">GPUs:</span> {{ inventory.gpus | join(', ') if inventory.gpus else 'Integrated / None' }}</div>
+                        <div class="col-12"><span class="text-muted">Disks:</span> {{ inventory.disks | join(', ') if inventory.disks else 'None' }}</div>
+                        <div class="col-12"><span class="text-muted">IPs:</span> <span class="font-monospace">{{ inventory.ip_addresses | join(', ') if inventory.ip_addresses else 'None' }}</span></div>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0">Hardware inventory has not been submitted yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- OS Installations List (Spec §43) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-layers me-2 text-primary"></i>Operating System Installations (Spec §43)</span>
+                <span class="badge bg-secondary-subtle text-secondary">{{ os_installations | length }} observed</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>OS Name & Version</th>
+                            <th>Family</th>
+                            <th>Architecture</th>
+                            <th>Instance ID</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for os in os_installations %}
+                        <tr>
+                            <td class="fw-semibold">{{ os.os_name }} {{ os.os_version }}</td>
+                            <td>{{ os.os_family.value }}</td>
+                            <td>{{ os.architecture }}</td>
+                            <td><span class="font-monospace text-muted" title="{{ os.agent_instance_id }}">{{ os.agent_instance_id[:8] }}...</span></td>
+                            <td>
+                                {% if os.status.value == 'ACTIVE' %}
+                                    <span class="badge bg-success">ACTIVE</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">HISTORICAL</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-muted text-center py-2">No OS installations recorded.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Asset History Timeline (Spec §44) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 fw-bold">
+                <i class="bi bi-clock-history me-2 text-primary"></i>Asset Link History (Spec §44)
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Asset ID</th>
+                            <th>Status</th>
+                            <th>Linked At</th>
+                            <th>Unlinked At</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for link in asset_links %}
+                        <tr>
+                            <td class="fw-semibold">{{ link.asset.asset_id }}</td>
+                            <td>
+                                {% if link.relationship_status.value == 'ACTIVE' %}
+                                    <span class="badge bg-success">ACTIVE</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">CLOSED</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ link.linked_at.strftime('%Y-%m-%d %H:%M') if link.linked_at else 'N/A' }}</td>
+                            <td>{{ link.unlinked_at.strftime('%Y-%m-%d %H:%M') if link.unlinked_at else 'Current' }}</td>
+                            <td class="text-muted">{{ link.reason or 'N/A' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-muted text-center py-2">No link history found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Remote Jobs Section -->
+<div id="jobs-section" class="card border-0 shadow-sm mb-4 mt-2">
+    <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-terminal me-2 text-primary"></i>Remote Maintenance & Diagnostic Jobs</span>
+        <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#dispatchJobCollapse">
+            <i class="bi bi-send me-1"></i>Dispatch New Job
+        </button>
+    </div>
+    <div class="card-body">
+        <!-- Dispatch Job Collapse Form -->
+        <div class="collapse mb-4" id="dispatchJobCollapse">
+            <div class="p-3 border rounded bg-light">
+                <h6 class="fw-bold mb-3">Dispatch Allowlisted Job</h6>
+                <form method="POST" action="{{ url_for('admin_infra.dispatch_device_job', device_id=device.device_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">Job Type</label>
+                            <select name="job_type" class="form-select form-select-sm" required>
+                                <option value="REFRESH_INVENTORY">REFRESH_INVENTORY</option>
+                                <option value="COLLECT_DIAGNOSTICS">COLLECT_DIAGNOSTICS</option>
+                                <option value="COLLECT_LOGS">COLLECT_LOGS</option>
+                                <option value="RESTART_APPROVED_SERVICE">RESTART_APPROVED_SERVICE</option>
+                                <option value="REFRESH_CONFIGURATION">REFRESH_CONFIGURATION</option>
+                                <option value="RUN_NETWORK_DIAGNOSTIC">RUN_NETWORK_DIAGNOSTIC</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small fw-semibold">Payload (Optional Key-Value / JSON)</label>
+                            <input type="text" name="payload_param" class="form-control form-control-sm" placeholder='e.g. {"target": "127.0.0.1"} or service_name'>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-dark btn-sm w-100">Send Job</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Jobs History Table -->
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 small">
+                <thead class="table-light">
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Created At</th>
+                        <th>Completed At</th>
+                        <th>Result Summary</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td class="font-monospace fw-bold">#{{ job.id }}</td>
+                        <td>{{ job.job_type.value }}</td>
+                        <td>
+                            {% if job.status.value == 'SUCCEEDED' %}
+                                <span class="badge bg-success">SUCCEEDED</span>
+                            {% elif job.status.value == 'FAILED' %}
+                                <span class="badge bg-danger">FAILED</span>
+                            {% elif job.status.value == 'DISPATCHED' %}
+                                <span class="badge bg-info text-dark">DISPATCHED</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">{{ job.status.value }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if job.created_at else 'N/A' }}</td>
+                        <td>{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC') if job.completed_at else 'Pending' }}</td>
+                        <td>
+                            {% if job.result %}
+                                <pre class="mb-0 font-monospace text-muted small" style="max-height: 80px; overflow-y: auto;">{{ job.result | tojson(indent=2) }}</pre>
+                            {% else %}
+                                <span class="text-muted fst-italic">Awaiting results</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-3 text-muted">No remote jobs dispatched to this endpoint yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Events Table -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 fw-bold">
+        <i class="bi bi-bell me-2 text-primary"></i>Device Events Timeline
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Event Type</th>
+                    <th>Severity</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for evt in events %}
+                <tr>
+                    <td class="text-muted">{{ evt.occurred_at.strftime('%Y-%m-%d %H:%M:%S UTC') if evt.occurred_at else 'N/A' }}</td>
+                    <td class="fw-semibold">{{ evt.event_type.value }}</td>
+                    <td>
+                        {% if evt.severity.value in ('HIGH', 'CRITICAL') %}
+                            <span class="badge bg-danger">{{ evt.severity.value }}</span>
+                        {% elif evt.severity.value == 'MEDIUM' %}
+                            <span class="badge bg-warning text-dark">MEDIUM</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ evt.severity.value }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="font-monospace text-muted">{{ evt.payload | tojson if evt.payload else 'None' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center py-3 text-muted">No security or lifecycle events recorded.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ctx = document.getElementById('telemetryChart').getContext('2d');
+    const timestamps = {{ telemetry_timestamps | tojson }};
+    const cpuData = {{ telemetry_cpu | tojson }};
+    const memData = {{ telemetry_mem | tojson }};
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: timestamps,
+            datasets: [
+                {
+                    label: 'CPU %',
+                    data: cpuData,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    fill: true
+                },
+                {
+                    label: 'RAM %',
+                    data: memData,
+                    borderColor: '#198754',
+                    backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'top' } },
+            scales: {
+                y: { min: 0, max: 100, ticks: { stepSize: 25 } },
+                x: { display: false }
+            }
+        }
+    });
+</script>
+{% endblock %}

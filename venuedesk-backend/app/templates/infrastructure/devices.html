@@ -1,0 +1,152 @@
+{% extends "infrastructure/base.html" %}
+{% block title %}Managed Devices{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1">Managed Endpoints</h3>
+        <p class="text-muted small mb-0">Overview of observed physical endpoints and asset links</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin_infra.unclaimed_devices') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-question-circle me-1"></i>Unclaimed ({{ unclaimed_count }})
+        </a>
+        <a href="{{ url_for('admin_infra.assets_list') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle me-1"></i>Pair New Asset
+        </a>
+    </div>
+</div>
+
+<!-- Filters Card -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All Statuses</option>
+                    {% for s in all_statuses %}
+                        <option value="{{ s }}" {% if filter_status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">Online State</label>
+                <select name="online" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option value="online" {% if filter_online == 'online' %}selected{% endif %}>Online (&le; 3m)</option>
+                    <option value="offline" {% if filter_online == 'offline' %}selected{% endif %}>Offline</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold">Search (IP / Hostname / Tag)</label>
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="Search..." value="{{ filter_q or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">OS Family</label>
+                <select name="os" class="form-select form-select-sm">
+                    <option value="">All OS</option>
+                    <option value="LINUX" {% if filter_os == 'LINUX' %}selected{% endif %}>Linux</option>
+                    <option value="WINDOWS" {% if filter_os == 'WINDOWS' %}selected{% endif %}>Windows</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-dark btn-sm flex-grow-1">Filter</button>
+                <a href="{{ url_for('admin_infra.devices_list') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Devices Table -->
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light small text-uppercase">
+                <tr>
+                    <th>Asset Tag / ID</th>
+                    <th>Device ID</th>
+                    <th>Status</th>
+                    <th>Online</th>
+                    <th>OS Summary</th>
+                    <th>IP Addresses</th>
+                    <th>Last Seen</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in devices %}
+                <tr>
+                    <td>
+                        {% if item.asset %}
+                            <div class="fw-bold">{{ item.asset.asset_tag or item.asset.asset_id }}</div>
+                            <span class="small text-muted">{{ item.asset.asset_id }}</span>
+                        {% else %}
+                            <span class="text-muted fst-italic">Unlinked</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('admin_infra.device_detail', device_id=item.device.device_id) }}" class="fw-semibold text-decoration-none">
+                            {{ item.device.device_id }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if item.device.status.value == 'ACTIVE' %}
+                            <span class="badge bg-success">ACTIVE</span>
+                        {% elif item.device.status.value == 'OFFLINE' %}
+                            <span class="badge bg-secondary">OFFLINE</span>
+                        {% elif item.device.status.value in ('PENDING_VERIFICATION', 'PENDING_REVERIFICATION') %}
+                            <span class="badge bg-warning text-dark">{{ item.device.status.value }}</span>
+                        {% elif item.device.status.value == 'SUSPENDED' %}
+                            <span class="badge bg-danger">SUSPENDED</span>
+                        {% else %}
+                            <span class="badge bg-info text-dark">{{ item.device.status.value }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.is_online %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                <i class="bi bi-circle-fill me-1 small"></i>Online
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                <i class="bi bi-dash-circle me-1 small"></i>Offline
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="small">{{ item.inventory.os_summary if item.inventory else 'Unknown' }}</span>
+                    </td>
+                    <td>
+                        <span class="small text-muted font-monospace">
+                            {{ (item.inventory.ip_addresses | join(', ')) if (item.inventory and item.inventory.ip_addresses) else 'N/A' }}
+                        </span>
+                    </td>
+                    <td class="small text-muted">
+                        {{ item.device.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC') if item.device.last_seen else 'Never' }}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a href="{{ url_for('admin_infra.device_detail', device_id=item.device.device_id) }}" class="btn btn-outline-primary" title="View Detail">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            {% if item.device.status.value in ('PENDING_VERIFICATION', 'PENDING_REVERIFICATION') %}
+                            <a href="{{ url_for('admin_infra.verify_device_view', device_id=item.device.device_id) }}" class="btn btn-outline-warning" title="Verify Device">
+                                <i class="bi bi-check2-circle"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">
+                        No endpoints match the filter criteria.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

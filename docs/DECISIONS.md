@@ -15,6 +15,7 @@ This document tracks all architectural, design, and implementation decisions mad
 | 2026-10-11 | Phase 7 Identity Reconciliation and Events | Implemented §4.6 diffing, severity policy, advisory similarity scoring (never auto-linking assets), decision engine determine_device_identity(obs), admin approval and pairing endpoints, and all 12 specification acceptance tests with >= 90% coverage on identity_service. |
 | 2026-10-11 | Phase 8 Recovery and Verification Workflows | Implemented OS reinstall recovery, physical verification, and motherboard replacement workflows per spec §4.8 and §25. |
 | 2026-10-11 | Phase 9 Remote Jobs and Secure Execution | Implemented allowlisted remote job service, dispatch/poll/result API, agent executor, and strict shell=False security invariants per spec §4.10. |
+| 2026-10-11 | Phase 10 Server-Rendered Admin Infrastructure UI | Built Bootstrap 5 UI under /admin/infrastructure/ with CSRF protection, RBAC checks, spec §42/§43/§44 blocks, Chart.js sparkline, pairing token generation, and approval queues. |
 
 ## Phase 8 Details
 
@@ -40,4 +41,20 @@ Network diagnostics enforce target host allowlisting and port range constraints.
 Agent log collection enforces a 1 MB cap and redacts pairing tokens and sensitive secret patterns.
 Under no circumstances is `shell=True` permitted anywhere in the agent codebase.
 An automated test continuously scans the agent source tree to prevent shell injection vectors.
+
+## Phase 10 Details
+
+Implemented server-rendered administrative user interface using Bootstrap 5 under `/admin/infrastructure/`.
+The interface enforces constant-time session CSRF token validation on all state-mutating requests.
+Role-based access control enforces `infra_admin` privileges for mutative actions and `infra_viewer` for read-only inspection.
+The devices list provides multi-axis filtering across status, online state, IP addresses, and operating systems.
+The device detail page implements specification section 42 with asset mapping, physical device identity, observed hardware inventory, and a live Chart.js utilization sparkline.
+Operating system installations are presented matching specification section 43 with distinct active and historical states.
+Asset link history is displayed matching specification section 44 to preserve institutional continuity.
+The unclaimed devices discovery view enables manual asset pairing workflows.
+The asset pairing view generates single-use pairing tokens shown exactly once with copy actions, CLI enrollment snippets, and SVG QR codes.
+The identity changes and recovery queue surfaces deviations and enables one-click approval workflows.
+The physical verification form captures auditor observations per specification section 57.
+The audit log viewer displays immutable compliance trails with old and new state diffs.
+
 
