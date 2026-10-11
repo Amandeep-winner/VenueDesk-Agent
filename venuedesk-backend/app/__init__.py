@@ -30,6 +30,12 @@ def create_app(config_name=None):
             "version": "0.1.0"
         }), 200
 
+    # Register Blueprints
+    from app.api.agents import agents_bp
+    from app.api.assets import assets_bp
+    flask_app.register_blueprint(agents_bp)
+    flask_app.register_blueprint(assets_bp)
+
     from app.cli import register_cli_commands
     register_cli_commands(flask_app)
 

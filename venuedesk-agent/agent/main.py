@@ -64,7 +64,14 @@ def run(ctx: click.Context) -> None:
 @click.pass_context
 def enroll(ctx: click.Context, server: str | None, token: str | None, force_reenroll: bool) -> None:
     """Enroll this endpoint with the VenueDesk control plane."""
-    click.echo("Enrollment command initialized.")
+    config: AgentConfig = ctx.obj["config"]
+    try:
+        from agent.communication.enrollment import enroll_agent
+        result = enroll_agent(config, token=token, force_reenroll=force_reenroll, server_url=server)
+        click.echo(f"Successfully enrolled device: {result['device_id']} (Status: {result['status']})")
+    except (RuntimeError, ValueError, OSError) as exc:
+        click.echo(f"Enrollment error: {exc}", err=True)
+        ctx.exit(1)
 
 
 @cli.command()

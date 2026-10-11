@@ -31,6 +31,7 @@ class AssetVerificationStatus(str, Enum):
 
 class DeviceStatus(str, Enum):
     ENROLLING = "ENROLLING"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
     ACTIVE = "ACTIVE"
     OFFLINE = "OFFLINE"
     PENDING_REVERIFICATION = "PENDING_REVERIFICATION"
