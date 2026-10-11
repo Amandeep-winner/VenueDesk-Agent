@@ -91,8 +91,19 @@ def mark_offline_command(interval):
     click.echo(f"Marked {len(marked)} devices as OFFLINE: {marked}")
 
 
+@click.command("purge-telemetry")
+@click.option("--older-than-days", default=30, type=int, help="Retention window threshold in days (default 30)")
+@with_appcontext
+def purge_telemetry_command(older_than_days):
+    """Purge high-frequency telemetry records older than retention threshold."""
+    from app.services.telemetry_service import purge_telemetry
+    deleted = purge_telemetry(older_than_days=older_than_days)
+    click.echo(f"Purged {deleted} telemetry records older than {older_than_days} days.")
+
+
 def register_cli_commands(app):
     """Register CLI commands with the Flask application."""
     app.cli.add_command(seed_demo_command)
     app.cli.add_command(create_admin_command)
     app.cli.add_command(mark_offline_command)
+    app.cli.add_command(purge_telemetry_command)

@@ -33,8 +33,10 @@ def create_app(config_name=None):
     # Register Blueprints
     from app.api.agents import agents_bp
     from app.api.assets import assets_bp
+    from app.api.devices import devices_bp
     flask_app.register_blueprint(agents_bp)
     flask_app.register_blueprint(assets_bp)
+    flask_app.register_blueprint(devices_bp)
 
     from app.cli import register_cli_commands
     register_cli_commands(flask_app)

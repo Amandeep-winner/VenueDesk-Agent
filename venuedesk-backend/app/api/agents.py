@@ -12,8 +12,11 @@ from app.models import (
     AuditLog,
     DeviceEvent,
     DeviceEventType,
+    DeviceIdentityEvidence,
+    DeviceInventory,
     DeviceStatus,
     EventSeverity,
+    OsFamily,
     OSInstallation,
     OsInstallationStatus,
 )
@@ -203,3 +206,175 @@ def rotate_credential():
         "status": "rotated",
         "credential_version": device.credential_version,
     }), 200
+
+
+@agents_bp.route("/inventory", methods=["POST"])
+@require_device_auth
+def post_inventory():
+    """Update observed endpoint technical inventory snapshot and OS installation."""
+    device = g.current_device
+    payload = request.get_json(silent=True) or {}
+    inv_data = payload.get("inventory") or payload
+    os_data = payload.get("os")
+
+    inv = DeviceInventory.query.filter_by(device_id=device.id).first()
+    if not inv:
+        inv = DeviceInventory(
+            device_id=device.id,
+            hostname=inv_data.get("hostname", "unknown"),
+            ip_addresses=inv_data.get("ip_addresses", []),
+            mac_addresses=inv_data.get("mac_addresses", []),
+            cpu_model=inv_data.get("cpu_model"),
+            cpu_cores=inv_data.get("cpu_cores"),
+            ram_total_mb=inv_data.get("ram_total_mb"),
+            gpus=inv_data.get("gpus", []),
+            disks=inv_data.get("disks", []),
+            os_summary=inv_data.get("os_summary"),
+            bios_version=inv_data.get("bios_version"),
+            tpm_present=bool(inv_data.get("tpm_present", False)),
+            agent_version=inv_data.get("agent_version", "0.1.0"),
+            updated_at=datetime.now(UTC),
+        )
+        db.session.add(inv)
+    else:
+        if "hostname" in inv_data:
+            inv.hostname = inv_data["hostname"]
+        if "ip_addresses" in inv_data:
+            inv.ip_addresses = inv_data["ip_addresses"]
+        if "mac_addresses" in inv_data:
+            inv.mac_addresses = inv_data["mac_addresses"]
+        if "cpu_model" in inv_data:
+            inv.cpu_model = inv_data["cpu_model"]
+        if "cpu_cores" in inv_data:
+            inv.cpu_cores = inv_data["cpu_cores"]
+        if "ram_total_mb" in inv_data:
+            inv.ram_total_mb = inv_data["ram_total_mb"]
+        if "gpus" in inv_data:
+            inv.gpus = inv_data["gpus"]
+        if "disks" in inv_data:
+            inv.disks = inv_data["disks"]
+        if "os_summary" in inv_data:
+            inv.os_summary = inv_data["os_summary"]
+        if "bios_version" in inv_data:
+            inv.bios_version = inv_data["bios_version"]
+        if "tpm_present" in inv_data:
+            inv.tpm_present = bool(inv_data["tpm_present"])
+        if "agent_version" in inv_data:
+            inv.agent_version = inv_data["agent_version"]
+        inv.updated_at = datetime.now(UTC)
+
+    now = datetime.now(UTC)
+    if os_data and isinstance(os_data, dict):
+        raw_fam = (os_data.get("family") or "OTHER").upper()
+        try:
+            os_fam = OsFamily(raw_fam)
+        except ValueError:
+            os_fam = OsFamily.OTHER
+
+        m_hash = os_data.get("os_machine_id_hash", "unknown")
+        os_inst = OSInstallation.query.filter_by(
+            device_id=device.id,
+            os_family=os_fam,
+            os_machine_id_hash=m_hash,
+        ).first()
+
+        if not os_inst:
+            os_inst = OSInstallation(
+                device_id=device.id,
+                os_family=os_fam,
+                os_name=os_data.get("name", "Unknown"),
+                os_version=os_data.get("version", "Unknown"),
+                architecture=os_data.get("architecture", "Unknown"),
+                os_machine_id_hash=m_hash,
+                agent_instance_id=payload.get("agent_instance_id") or os_data.get("agent_instance_id") or "unknown",
+                first_seen=now,
+                last_seen=now,
+                status=OsInstallationStatus.ACTIVE,
+            )
+            db.session.add(os_inst)
+        else:
+            os_inst.os_name = os_data.get("name", os_inst.os_name)
+            os_inst.os_version = os_data.get("version", os_inst.os_version)
+            os_inst.architecture = os_data.get("architecture", os_inst.architecture)
+            os_inst.last_seen = now
+            os_inst.status = OsInstallationStatus.ACTIVE
+
+    device.last_seen = now
+    db.session.commit()
+
+    # Trigger reconciliation hook if identity service is available
+    try:
+        from app.services.identity_service import reconcile_device_inventory
+        reconcile_device_inventory(device, inv_data, os_data)
+    except (ImportError, AttributeError):
+        pass
+
+    return jsonify({"status": "inventory_updated"}), 200
+
+
+@agents_bp.route("/telemetry", methods=["POST"])
+@require_device_auth
+def post_telemetry():
+    """Ingest batch telemetry metrics (max 500 samples per batch)."""
+    device = g.current_device
+    payload = request.get_json(silent=True) or {}
+
+    samples = payload.get("samples")
+    if samples is None:
+        if isinstance(payload, list):
+            samples = payload
+        else:
+            return jsonify({"error": "invalid_payload", "message": "Expected 'samples' list in payload"}), 400
+
+    if not isinstance(samples, list):
+        return jsonify({"error": "invalid_payload", "message": "'samples' must be a list"}), 400
+
+    if len(samples) > 500:
+        return jsonify({
+            "error": "payload_too_large",
+            "message": f"Telemetry batch exceeds maximum limit of 500 samples (received {len(samples)})",
+        }), 413
+
+    from app.services.telemetry_service import record_telemetry
+    count = record_telemetry(device.id, samples)
+    return jsonify({"status": "recorded", "count": count}), 200
+
+
+@agents_bp.route("/identity", methods=["POST"])
+@require_device_auth
+def post_identity():
+    """Submit updated device identity evidence snapshot."""
+    device = g.current_device
+    payload = request.get_json(silent=True) or {}
+    ev_data = payload.get("identity_evidence") or payload
+
+    now = datetime.now(UTC)
+    evidence_row = DeviceIdentityEvidence(
+        device_id=device.id,
+        machine_uuid_hash=ev_data.get("machine_uuid_hash"),
+        bios_serial_hash=ev_data.get("bios_serial_hash"),
+        motherboard_serial_hash=ev_data.get("motherboard_serial_hash"),
+        cpu_signature=ev_data.get("cpu_signature"),
+        gpu_signature=ev_data.get("gpu_signature"),
+        disk_identity_hash=ev_data.get("disk_identity_hash"),
+        network_identity_hash=ev_data.get("network_identity_hash"),
+        tpm_identity=ev_data.get("tpm_identity"),
+        fingerprint=ev_data.get("fingerprint", "unknown"),
+        fingerprint_version=ev_data.get("fingerprint_version", 1),
+        captured_at=now,
+        evidence_version=1,
+        trusted=False,
+    )
+    db.session.add(evidence_row)
+    device.last_seen = now
+    db.session.commit()
+
+    # Trigger reconciliation hook if identity service is available
+    try:
+        from app.services.identity_service import reconcile_device_evidence
+        reconcile_device_evidence(device, ev_data)
+    except (ImportError, AttributeError):
+        pass
+
+    return jsonify({"status": "identity_received"}), 200
+

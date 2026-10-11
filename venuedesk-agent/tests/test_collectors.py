@@ -57,3 +57,40 @@ def test_collect_identity_evidence_returns_evidence_object():
     # Ensure fingerprint computation does not crash
     fp = ev.compute_fingerprint()
     assert len(fp) == 64
+
+
+def test_collect_processes_and_services():
+    from agent.collectors.processes import collect_processes
+    from agent.collectors.services import collect_services
+
+    procs = collect_processes(limit=5)
+    assert isinstance(procs, list)
+    if procs:
+        p0 = procs[0]
+        assert "pid" in p0
+        assert "name" in p0
+
+    svcs = collect_services()
+    assert isinstance(svcs, list)
+
+
+def test_collect_full_inventory_and_telemetry():
+    from agent.collectors import collect_full_inventory, collect_telemetry_sample
+
+    inv = collect_full_inventory()
+    assert isinstance(inv, dict)
+    assert "hostname" in inv
+    assert "ip_addresses" in inv
+    assert "mac_addresses" in inv
+    assert "os_summary" in inv
+    assert "agent_version" in inv
+    assert inv["agent_version"] == "0.1.0"
+
+    telem = collect_telemetry_sample()
+    assert isinstance(telem, dict)
+    assert "cpu_percent" in telem
+    assert "memory_percent" in telem
+    assert "disk_percent" in telem
+    assert "uptime" in telem
+    assert "timestamp" in telem
+
