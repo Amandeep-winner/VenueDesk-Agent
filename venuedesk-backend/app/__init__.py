@@ -3,6 +3,7 @@ import os
 
 from flask import Flask, jsonify
 
+import app.models  # noqa: F401
 from app.config import config_by_name
 from app.extensions import db, migrate
 
@@ -12,16 +13,16 @@ def create_app(config_name=None):
     if config_name is None:
         config_name = os.getenv("FLASK_ENV", "development")
 
-    app = Flask(__name__)
+    flask_app = Flask(__name__)
     config_obj = config_by_name.get(config_name, config_by_name["default"])
-    app.config.from_object(config_obj)
+    flask_app.config.from_object(config_obj)
 
     # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
+    db.init_app(flask_app)
+    migrate.init_app(flask_app, db)
 
     # Health check route
-    @app.route("/healthz", methods=["GET"])
+    @flask_app.route("/healthz", methods=["GET"])
     def health_check():
         return jsonify({
             "status": "ok",
@@ -29,4 +30,7 @@ def create_app(config_name=None):
             "version": "0.1.0"
         }), 200
 
-    return app
+    from app.cli import register_cli_commands
+    register_cli_commands(flask_app)
+
+    return flask_app
