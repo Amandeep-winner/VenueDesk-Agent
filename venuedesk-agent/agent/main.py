@@ -100,7 +100,15 @@ def recover(ctx: click.Context) -> None:
 @click.pass_context
 def rotate_credential_cmd(ctx: click.Context) -> None:
     """Generate new key pair and request credential rotation from control plane."""
-    click.echo("Initiating credential rotation...")
+    config: AgentConfig = ctx.obj["config"]
+    try:
+        from agent.communication.client import AuthenticatedClient
+        client = AuthenticatedClient(config)
+        res = client.rotate_credential()
+        click.echo(f"Successfully rotated credential to version {res.get('credential_version')}.")
+    except (RuntimeError, ValueError, OSError) as exc:
+        click.echo(f"Credential rotation error: {exc}", err=True)
+        ctx.exit(1)
 
 
 @cli.command("collect-once")

@@ -81,7 +81,18 @@ def create_admin_command(username, password):
     click.echo(f"Successfully created admin user {username}.")
 
 
+@click.command("mark-offline")
+@click.option("--interval", default=60, help="Heartbeat interval in seconds (default 60)")
+@with_appcontext
+def mark_offline_command(interval):
+    """Mark devices that have missed heartbeats as OFFLINE."""
+    from app.services.device_service import mark_offline_devices
+    marked = mark_offline_devices(heartbeat_interval_seconds=interval)
+    click.echo(f"Marked {len(marked)} devices as OFFLINE: {marked}")
+
+
 def register_cli_commands(app):
     """Register CLI commands with the Flask application."""
     app.cli.add_command(seed_demo_command)
     app.cli.add_command(create_admin_command)
+    app.cli.add_command(mark_offline_command)
