@@ -294,10 +294,13 @@ def heartbeat():
     device.last_seen = now
     db.session.commit()
 
+    from app.services.job_service import has_pending_jobs
+    pending = has_pending_jobs(device.id)
+
     return jsonify({
         "server_time": int(now.timestamp()),
         "config_version": 1,
-        "pending_jobs": False,
+        "pending_jobs": pending,
     }), 200
 
 
@@ -525,4 +528,56 @@ def post_identity():
         pass
 
     return jsonify({"status": "identity_received"}), 200
+
+
+@agents_bp.route("/jobs", methods=["GET"])
+@agents_bp.route("/jobs/poll", methods=["POST"])
+@require_device_auth
+def poll_jobs():
+    """Poll pending remote maintenance/diagnostic jobs dispatched to this device."""
+    device = g.current_device
+    from app.services.job_service import get_pending_jobs_for_device
+
+    jobs = get_pending_jobs_for_device(device.id, mark_dispatched=True)
+    return jsonify({
+        "jobs": [
+            {
+                "id": j.id,
+                "job_type": j.job_type.value,
+                "payload": j.payload,
+                "expires_at": j.expires_at.isoformat() if j.expires_at else None,
+            }
+            for j in jobs
+        ]
+    }), 200
+
+
+@agents_bp.route("/jobs/<int:job_id>/result", methods=["POST"])
+@require_device_auth
+def post_job_result(job_id: int):
+    """Report execution outcome and payload results for a dispatched job."""
+    device = g.current_device
+    payload = request.get_json(silent=True) or {}
+
+    status = payload.get("status", "FAILED")
+    result_data = payload.get("result")
+    error_msg = payload.get("error")
+
+    from app.services.job_service import record_job_result
+
+    try:
+        job = record_job_result(
+            job_id=job_id,
+            device_identifier=device.id,
+            status=status,
+            result=result_data,
+            error=error_msg,
+        )
+        return jsonify({
+            "status": "recorded",
+            "job_id": job.id,
+            "job_status": job.status.value,
+        }), 200
+    except ValueError as exc:
+        return jsonify({"error": "invalid_job", "message": str(exc)}), 400
 

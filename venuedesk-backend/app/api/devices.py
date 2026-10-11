@@ -222,3 +222,73 @@ def get_recovery_requests_endpoint():
         })
     return jsonify({"count": len(result), "recovery_requests": result}), 200
 
+
+@devices_bp.route("/<device_id>/jobs", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def create_device_job_endpoint(device_id: str):
+    """Dispatch an allowlisted remote maintenance or diagnostic job to an endpoint."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    job_type = payload.get("job_type")
+    if not job_type:
+        return jsonify({"error": "invalid_payload", "message": "Missing 'job_type' field"}), 400
+
+    job_payload = payload.get("payload", {})
+    expires_in = payload.get("expires_in_seconds", 3600)
+    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+
+    try:
+        from app.services import job_service
+        job = job_service.create_job(
+            device_identifier=device.id,
+            job_type=job_type,
+            payload=job_payload,
+            created_by=admin_name,
+            expires_in_seconds=int(expires_in),
+        )
+        return jsonify({
+            "status": "dispatched",
+            "job_id": job.id,
+            "device_id": device.device_id,
+            "job_type": job.job_type.value,
+            "job_status": job.status.value,
+            "expires_at": job.expires_at.isoformat(),
+        }), 201
+    except ValueError as exc:
+        return jsonify({"error": "invalid_job", "message": str(exc)}), 400
+
+
+@devices_bp.route("/<device_id>/jobs", methods=["GET"])
+@require_role(UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER)
+def get_device_jobs_endpoint(device_id: str):
+    """Retrieve remote job history and results for an endpoint."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    from app.services import job_service
+    jobs = job_service.get_device_jobs(device.id)
+    results = [
+        {
+            "id": j.id,
+            "job_type": j.job_type.value,
+            "status": j.status.value,
+            "payload": j.payload,
+            "created_by": j.created_by,
+            "created_at": j.created_at.isoformat() if j.created_at else None,
+            "started_at": j.started_at.isoformat() if j.started_at else None,
+            "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+            "expires_at": j.expires_at.isoformat() if j.expires_at else None,
+            "result": j.result,
+        }
+        for j in jobs
+    ]
+    return jsonify({
+        "device_id": device.device_id,
+        "count": len(results),
+        "jobs": results,
+    }), 200
+
