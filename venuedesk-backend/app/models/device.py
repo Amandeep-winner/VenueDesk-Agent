@@ -210,3 +210,23 @@ class Verification(db.Model):
     verified_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     device = db.relationship("PhysicalDevice")
+
+
+class DeviceRecoveryRequest(db.Model):
+    """Pending recovery requests from reinstalled endpoints awaiting admin approval."""
+    __tablename__ = "device_recovery_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    new_public_key = Column(Text, nullable=False)
+    new_agent_instance_id = Column(String(64), nullable=False)
+    new_os_info = Column(JSON, nullable=True)
+    new_inventory = Column(JSON, nullable=True)
+    new_evidence = Column(JSON, nullable=True)
+    status = Column(String(32), nullable=False, default="PENDING")  # PENDING, APPROVED, REJECTED
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(String(128), nullable=True)
+
+    device = db.relationship("PhysicalDevice")
+

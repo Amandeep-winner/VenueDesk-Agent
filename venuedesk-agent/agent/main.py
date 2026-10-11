@@ -90,10 +90,25 @@ def print_identity_cmd(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.option("--server", "-s", default=None, help="Control plane server URL")
+@click.option("--wait", is_flag=True, default=False, help="Wait and poll for administrator approval")
+@click.option("--timeout", default=60, help="Polling timeout in seconds")
 @click.pass_context
-def recover(ctx: click.Context) -> None:
+def recover(ctx: click.Context, server: str | None, wait: bool, timeout: int) -> None:
     """Attempt recovery workflow following OS reinstall or state loss."""
-    click.echo("Initiating endpoint recovery workflow...")
+    config: AgentConfig = ctx.obj["config"]
+    try:
+        from agent.communication.recovery import recover_agent
+        result = recover_agent(
+            config,
+            server_url=server,
+            wait_for_approval=wait,
+            poll_timeout_seconds=timeout,
+        )
+        click.echo(f"Recovery request status: {result['status']} (Device ID: {result.get('device_id')})")
+    except (RuntimeError, ValueError, TimeoutError, OSError) as exc:
+        click.echo(f"Recovery error: {exc}", err=True)
+        ctx.exit(1)
 
 
 @cli.command("rotate-credential")

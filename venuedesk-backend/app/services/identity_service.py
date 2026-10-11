@@ -11,18 +11,24 @@ from app.models import (
     Asset,
     AssetDeviceLink,
     AssetLifecycleStatus,
+    AssetVerificationStatus,
     AuditAction,
     AuditLog,
     DeviceEvent,
     DeviceEventType,
     DeviceIdentityEvidence,
     DeviceInventory,
+    DeviceRecoveryRequest,
     DeviceStatus,
+    EnrollmentToken,
     EventSeverity,
+    OsFamily,
     OSInstallation,
     OsInstallationStatus,
     PhysicalDevice,
     RelationshipStatus,
+    Verification,
+    VerificationMethod,
 )
 
 logger = logging.getLogger(__name__)
@@ -563,3 +569,291 @@ def pair_unclaimed_device(
     )
     db.session.commit()
     return dev, asset
+
+
+def approve_device_recovery(
+    device_identifier: str | int,
+    admin_name: str,
+) -> tuple[PhysicalDevice, DeviceRecoveryRequest]:
+    """Approve pending OS reinstall recovery request, rotate public key, and activate new OS."""
+    dev = (
+        PhysicalDevice.query.filter_by(device_id=str(device_identifier)).first()
+        if isinstance(device_identifier, str)
+        else db.session.get(PhysicalDevice, device_identifier)
+    )
+    if not dev:
+        raise ValueError(f"Device {device_identifier} not found")
+
+    rec_req = (
+        DeviceRecoveryRequest.query.filter_by(device_id=dev.id, status="PENDING")
+        .order_by(DeviceRecoveryRequest.created_at.desc())
+        .first()
+    )
+    if not rec_req:
+        raise ValueError(f"No pending recovery request found for device {dev.device_id}")
+
+    now = datetime.now(UTC)
+
+    # 1. Rotate credentials
+    old_cred_ver = dev.credential_version or 1
+    dev.device_public_key = rec_req.new_public_key
+    dev.credential_version = old_cred_ver + 1
+    dev.status = DeviceStatus.ACTIVE
+    dev.last_seen = now
+
+    # 2. Archive active OS installations and activate the new OS
+    for eos in OSInstallation.query.filter_by(device_id=dev.id, status=OsInstallationStatus.ACTIVE).all():
+        eos.status = OsInstallationStatus.HISTORICAL
+
+    os_data = rec_req.new_os_info or {}
+    raw_family = (os_data.get("family") or "OTHER").upper()
+    try:
+        os_fam = OsFamily(raw_family)
+    except ValueError:
+        os_fam = OsFamily.OTHER
+
+    os_name = os_data.get("name", "Unknown")
+    os_version = os_data.get("version", "Unknown")
+    arch = os_data.get("architecture", "Unknown")
+    machine_id_hash = os_data.get("os_machine_id_hash", "none")
+
+    existing_matching = OSInstallation.query.filter_by(
+        device_id=dev.id,
+        os_family=os_fam,
+        os_machine_id_hash=machine_id_hash,
+    ).first()
+    if existing_matching:
+        existing_matching.os_name = os_name
+        existing_matching.os_version = os_version
+        existing_matching.architecture = arch
+        existing_matching.agent_instance_id = rec_req.new_agent_instance_id
+        existing_matching.status = OsInstallationStatus.ACTIVE
+        existing_matching.last_seen = now
+    else:
+        new_os = OSInstallation(
+            device_id=dev.id,
+            os_family=os_fam,
+            os_name=os_name,
+            os_version=os_version,
+            architecture=arch,
+            os_machine_id_hash=machine_id_hash,
+            agent_instance_id=rec_req.new_agent_instance_id,
+            status=OsInstallationStatus.ACTIVE,
+            first_seen=now,
+            last_seen=now,
+        )
+        db.session.add(new_os)
+
+    # 3. Update inventory if provided
+    if rec_req.new_inventory:
+        inv = dev.inventory
+        if not inv:
+            inv = DeviceInventory(device_id=dev.id, hostname="unknown", agent_version="0.1.0")
+            db.session.add(inv)
+        inv_data = rec_req.new_inventory
+        inv.hostname = inv_data.get("hostname", inv.hostname)
+        inv.ip_addresses = inv_data.get("ip_addresses", inv.ip_addresses)
+        inv.mac_addresses = inv_data.get("mac_addresses", inv.mac_addresses)
+        inv.cpu_model = inv_data.get("cpu_model", inv.cpu_model)
+        inv.cpu_cores = inv_data.get("cpu_cores", inv.cpu_cores)
+        inv.ram_total_mb = inv_data.get("ram_total_mb", inv.ram_total_mb)
+        inv.gpus = inv_data.get("gpus", inv.gpus)
+        inv.disks = inv_data.get("disks", inv.disks)
+        inv.os_summary = inv_data.get("os_summary", inv.os_summary)
+        inv.bios_version = inv_data.get("bios_version", inv.bios_version)
+        inv.updated_at = now
+
+    # 4. Record new evidence snapshot or trust latest
+    if rec_req.new_evidence:
+        ev_data = rec_req.new_evidence
+        ev_row = DeviceIdentityEvidence(
+            device_id=dev.id,
+            machine_uuid_hash=ev_data.get("machine_uuid_hash"),
+            bios_serial_hash=ev_data.get("bios_serial_hash"),
+            motherboard_serial_hash=ev_data.get("motherboard_serial_hash"),
+            cpu_signature=ev_data.get("cpu_signature"),
+            gpu_signature=ev_data.get("gpu_signature"),
+            disk_identity_hash=ev_data.get("disk_identity_hash"),
+            network_identity_hash=ev_data.get("network_identity_hash"),
+            tpm_identity=ev_data.get("tpm_identity"),
+            fingerprint=ev_data.get("fingerprint", "unknown"),
+            fingerprint_version=ev_data.get("fingerprint_version", 1),
+            captured_at=now,
+            evidence_version=1,
+            trusted=True,
+        )
+        db.session.add(ev_row)
+    else:
+        latest_ev = (
+            DeviceIdentityEvidence.query.filter_by(device_id=dev.id)
+            .order_by(DeviceIdentityEvidence.captured_at.desc())
+            .first()
+        )
+        if latest_ev:
+            latest_ev.trusted = True
+
+    # 5. Resolve recovery request
+    rec_req.status = "APPROVED"
+    rec_req.resolved_at = now
+    rec_req.resolved_by = admin_name
+
+    # 6. Audit log
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.CREDENTIAL_ROTATED,
+            entity_type="device",
+            entity_id=dev.device_id,
+            old_value={"credential_version": old_cred_ver},
+            new_value={"credential_version": dev.credential_version, "status": dev.status.value},
+            metadata_json={"recovery_request_id": rec_req.id},
+        )
+    )
+    db.session.commit()
+    return dev, rec_req
+
+
+def verify_device_physical(
+    device_identifier: str | int,
+    admin_name: str,
+    verification_method: str = "ADMIN_CONFIRMATION",
+    observed_asset_tag: str | None = None,
+    observed_serial: str | None = None,
+    observed_location: str | None = None,
+    notes: str | None = None,
+) -> tuple[PhysicalDevice, Asset | None, Verification]:
+    """Verify endpoint-to-asset physical continuity, update verification record, trusted snapshot, and asset status."""
+    dev = (
+        PhysicalDevice.query.filter_by(device_id=str(device_identifier)).first()
+        if isinstance(device_identifier, str)
+        else db.session.get(PhysicalDevice, device_identifier)
+    )
+    if not dev:
+        raise ValueError(f"Device {device_identifier} not found")
+
+    try:
+        method_enum = VerificationMethod(verification_method.upper())
+    except (ValueError, KeyError, AttributeError):
+        method_enum = VerificationMethod.ADMIN_CONFIRMATION
+
+    now = datetime.now(UTC)
+
+    # 1. Create verification audit record
+    ver = Verification(
+        device_id=dev.id,
+        verified_by=admin_name,
+        verification_method=method_enum,
+        observed_asset_tag=observed_asset_tag,
+        observed_serial=observed_serial,
+        observed_location=observed_location,
+        notes=notes,
+        verified_at=now,
+    )
+    db.session.add(ver)
+    db.session.flush()
+
+    # 2. Update active asset link and asset status if linked
+    active_link = AssetDeviceLink.query.filter_by(
+        device_id=dev.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).first()
+
+    asset = None
+    if active_link:
+        active_link.verification_id = ver.id
+        asset = active_link.asset
+        asset.verification_status = AssetVerificationStatus.VERIFIED
+        asset.lifecycle_status = AssetLifecycleStatus.IN_SERVICE
+
+    # 3. Update device state and trusted evidence snapshot
+    dev.last_verified_at = now
+    dev.status = DeviceStatus.ACTIVE
+
+    latest_ev = (
+        DeviceIdentityEvidence.query.filter_by(device_id=dev.id)
+        .order_by(DeviceIdentityEvidence.captured_at.desc())
+        .first()
+    )
+    if latest_ev:
+        latest_ev.trusted = True
+
+    # 4. Audit log
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.ASSET_VERIFIED,
+            entity_type="device",
+            entity_id=dev.device_id,
+            new_value={"verification_id": ver.id, "method": method_enum.value},
+            metadata_json={"asset_id": asset.asset_id if asset else None},
+        )
+    )
+    db.session.commit()
+    return dev, asset, ver
+
+
+def replace_device_endpoint(
+    device_identifier: str | int,
+    admin_name: str,
+    reason: str = "Endpoint hardware/motherboard replacement",
+) -> tuple[PhysicalDevice, Asset, str, EnrollmentToken]:
+    """Motherboard replacement workflow: closes old device link, retires old device, and creates re-pairing token for same asset."""
+    dev = (
+        PhysicalDevice.query.filter_by(device_id=str(device_identifier)).first()
+        if isinstance(device_identifier, str)
+        else db.session.get(PhysicalDevice, device_identifier)
+    )
+    if not dev:
+        raise ValueError(f"Device {device_identifier} not found")
+
+    active_link = AssetDeviceLink.query.filter_by(
+        device_id=dev.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).first()
+    if not active_link:
+        raise ValueError(f"Device {dev.device_id} has no active asset link to replace")
+
+    asset = active_link.asset
+    now = datetime.now(UTC)
+
+    # 1. Close old link
+    active_link.relationship_status = RelationshipStatus.CLOSED
+    active_link.unlinked_at = now
+    active_link.reason = reason
+
+    # 2. Retire old device
+    dev.status = DeviceStatus.RETIRED
+
+    # 3. Audit unlinking
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.DEVICE_UNLINKED,
+            entity_type="link",
+            entity_id=f"{asset.asset_id}:{dev.device_id}",
+            new_value={"relationship_status": "CLOSED", "reason": reason},
+        )
+    )
+
+    # 4. Generate new pairing token for the same asset
+    from app.security.tokens import create_token_for_asset
+    raw_token, token_obj = create_token_for_asset(asset.id, created_by=admin_name)
+
+    # 5. Audit token creation
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.TOKEN_CREATED,
+            entity_type="token",
+            entity_id=str(token_obj.id),
+            new_value={"asset_id": asset.asset_id},
+        )
+    )
+
+    db.session.commit()
+    return dev, asset, raw_token, token_obj
+

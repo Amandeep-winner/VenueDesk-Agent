@@ -13,3 +13,15 @@ This document tracks all architectural, design, and implementation decisions mad
 | 2026-10-11 | Phase 5 Authenticated Communication and Rotation | Implemented signed HTTP request client, exponential backoff with jitter and Retry-After support, duplicate device detection, offline marking, and asymmetric credential rotation. |
 | 2026-10-11 | Phase 6 Inventory, Telemetry, and Offline Outbox | Implemented full system/hardware/process/service inventory collectors, SQLite priority outbox queue with pressure shedding (never dropping priority-0 items), batch telemetry ingestion with 500-sample limit, retention pruning, and admin query API. |
 | 2026-10-11 | Phase 7 Identity Reconciliation and Events | Implemented §4.6 diffing, severity policy, advisory similarity scoring (never auto-linking assets), decision engine determine_device_identity(obs), admin approval and pairing endpoints, and all 12 specification acceptance tests with >= 90% coverage on identity_service. |
+| 2026-10-11 | Phase 8 Recovery and Verification Workflows | Implemented OS reinstall recovery, physical verification, and motherboard replacement workflows per spec §4.8 and §25. |
+
+## Phase 8 Details
+
+Implemented endpoint recovery workflow following OS reinstall or state loss.
+The agent generates a new key pair and submits a signed recovery request with hardware evidence.
+The decision engine matches existing candidate devices based on strong hardware anchors.
+Administrators review and approve recovery requests via the admin API.
+Approving recovery rotates credentials, increments the credential version, and marks previous OS installations as historical.
+Implemented physical verification workflow linking verification audit records, marking hardware snapshots trusted, and activating assets in service.
+Implemented motherboard replacement workflow that closes the old device link with reason and generates a new pairing token for the same institutional asset.
+This ensures the asset retains complete operational history across endpoint replacements.

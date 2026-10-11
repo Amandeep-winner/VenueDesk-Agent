@@ -85,6 +85,154 @@ def enroll():
         return jsonify({"error": "invalid_enrollment", "message": str(exc)}), 400
 
 
+@agents_bp.route("/recover", methods=["POST"])
+def recover():
+    """Endpoint recovery workflow following OS reinstall or state loss (spec §4.8)."""
+    source_ip = request.remote_addr or "127.0.0.1"
+
+    if not check_enroll_rate_limit(source_ip):
+        return jsonify({
+            "error": "rate_limited",
+            "message": "Too many recovery attempts. Please try again later.",
+        }), 429
+
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "invalid_payload", "message": "JSON body is required"}), 400
+
+    pub_key_b64 = payload.get("device_public_key")
+    pop_sig_b64 = payload.get("proof_of_possession")
+    req_ts = payload.get("timestamp")
+    nonce = payload.get("nonce")
+
+    if not all([pub_key_b64, pop_sig_b64, req_ts, nonce]):
+        return jsonify({"error": "invalid_payload", "message": "Missing required cryptographic parameters"}), 400
+
+    try:
+        req_ts_int = int(req_ts)
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid_timestamp", "message": "Invalid timestamp format"}), 400
+
+    skew_limit = current_app.config.get("CLOCK_SKEW_SECONDS", 120)
+    current_ts = int(time.time())
+    if abs(current_ts - req_ts_int) > skew_limit:
+        return jsonify({"error": "clock_skew", "message": "Timestamp out of allowable skew window"}), 400
+
+    nonce_key = f"recover-{source_ip}-{pub_key_b64[:16]}"
+    from app.security.replay import check_and_record_nonce
+    if not check_and_record_nonce(nonce_key, str(nonce), skew_seconds=skew_limit):
+        return jsonify({"error": "replay_detected", "message": "Nonce replayed"}), 400
+
+    msg = f"recover\n{pub_key_b64}\n{req_ts}\n{nonce}".encode()
+    if not verify(pub_key_b64, pop_sig_b64, msg):
+        return jsonify({"error": "invalid_signature", "message": "Cryptographic proof of possession failed"}), 400
+
+    from app.services.identity_service import (
+        IdentityDecision,
+        Observation,
+        determine_device_identity,
+    )
+    obs = Observation(
+        device_public_key=pub_key_b64,
+        evidence=payload.get("identity_evidence", {}),
+        inventory=payload.get("inventory"),
+        os=payload.get("os"),
+        agent_instance_id=payload.get("agent_instance_id"),
+    )
+    decision, candidates, score = determine_device_identity(obs)
+
+    now = datetime.now(UTC)
+    if decision == IdentityDecision.PENDING_REVERIFICATION:
+        candidate = candidates[0]
+        candidate.status = DeviceStatus.PENDING_REVERIFICATION
+
+        event = DeviceEvent(
+            device_id=candidate.id,
+            event_type=DeviceEventType.OS_REINSTALL_DETECTED,
+            severity=EventSeverity.HIGH,
+            payload={
+                "message": "OS reinstall detected via strong hardware evidence",
+                "similarity_score": score,
+                "new_agent_instance_id": payload.get("agent_instance_id"),
+            },
+            occurred_at=now,
+            created_at=now,
+        )
+        db.session.add(event)
+
+        from app.models import DeviceRecoveryRequest
+        rec_req = DeviceRecoveryRequest(
+            device_id=candidate.id,
+            new_public_key=pub_key_b64,
+            new_agent_instance_id=payload.get("agent_instance_id") or "unknown",
+            new_os_info=payload.get("os"),
+            new_inventory=payload.get("inventory"),
+            new_evidence=payload.get("identity_evidence"),
+            status="PENDING",
+            created_at=now,
+        )
+        db.session.add(rec_req)
+        db.session.commit()
+
+        return jsonify({
+            "status": "pending_approval",
+            "device_id": candidate.device_id,
+            "recovery_request_id": rec_req.id,
+            "message": "Recovery request pending administrator approval",
+        }), 200
+
+    elif decision == IdentityDecision.UNKNOWN_DEVICE:
+        return jsonify({"error": "unknown_device", "message": "No matching device found for recovery"}), 404
+
+    elif decision == IdentityDecision.AMBIGUOUS:
+        return jsonify({"error": "ambiguous_match", "message": "Multiple candidate devices matched evidence"}), 409
+
+    else:
+        return jsonify({
+            "error": "manual_verification_required",
+            "message": "Insufficient matching anchors for automatic recovery",
+        }), 400
+
+
+@agents_bp.route("/recover/status", methods=["GET"])
+def recover_status():
+    """Poll endpoint recovery approval status."""
+    device_id = request.args.get("device_id") or request.headers.get("X-Device-ID")
+    if not device_id:
+        return jsonify({"error": "missing_parameter", "message": "device_id query param or header required"}), 400
+
+    from app.models import DeviceRecoveryRequest, PhysicalDevice
+    device = PhysicalDevice.query.filter_by(device_id=device_id).first()
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    rec_req = (
+        DeviceRecoveryRequest.query.filter_by(device_id=device.id)
+        .order_by(DeviceRecoveryRequest.created_at.desc())
+        .first()
+    )
+    if not rec_req:
+        return jsonify({"status": "none", "device_id": device.device_id}), 200
+
+    if rec_req.status == "APPROVED":
+        return jsonify({
+            "status": "approved",
+            "device_id": device.device_id,
+            "credential_version": device.credential_version,
+            "config": {
+                "heartbeat_seconds": current_app.config.get("HEARTBEAT_SECONDS", 60),
+                "telemetry_seconds": current_app.config.get("TELEMETRY_SECONDS", 60),
+                "inventory_seconds": current_app.config.get("INVENTORY_SECONDS", 21600),
+                "jobs_poll_seconds": current_app.config.get("JOBS_POLL_SECONDS", 60),
+            },
+        }), 200
+
+    if rec_req.status == "REJECTED":
+        return jsonify({"status": "rejected", "device_id": device.device_id}), 200
+
+    return jsonify({"status": "pending", "device_id": device.device_id}), 200
+
+
 @agents_bp.route("/heartbeat", methods=["POST"])
 @require_device_auth
 def heartbeat():
