@@ -217,6 +217,13 @@ def post_inventory():
     inv_data = payload.get("inventory") or payload
     os_data = payload.get("os")
 
+    # Trigger reconciliation hook before updating current snapshot
+    try:
+        from app.services.identity_service import reconcile_device_inventory
+        reconcile_device_inventory(device, inv_data, os_data)
+    except (ImportError, AttributeError):
+        pass
+
     inv = DeviceInventory.query.filter_by(device_id=device.id).first()
     if not inv:
         inv = DeviceInventory(
@@ -301,13 +308,6 @@ def post_inventory():
 
     device.last_seen = now
     db.session.commit()
-
-    # Trigger reconciliation hook if identity service is available
-    try:
-        from app.services.identity_service import reconcile_device_inventory
-        reconcile_device_inventory(device, inv_data, os_data)
-    except (ImportError, AttributeError):
-        pass
 
     return jsonify({"status": "inventory_updated"}), 200
 

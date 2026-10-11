@@ -1,11 +1,12 @@
 """Admin device management and inspection API endpoints."""
 from datetime import UTC, datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from app.extensions import db
-from app.models import PhysicalDevice, UserRole
+from app.models import DeviceStatus, PhysicalDevice, UserRole
 from app.security.rbac import require_role
+from app.services.identity_service import approve_hardware_change, pair_unclaimed_device
 from app.services.telemetry_service import get_device_telemetry
 
 devices_bp = Blueprint("devices", __name__, url_prefix="/api/v1/admin/devices")
@@ -57,3 +58,61 @@ def get_telemetry_endpoint(device_id: str):
         "count": len(records),
         "telemetry": records,
     }), 200
+
+
+@devices_bp.route("/<device_id>/approve-hardware-change", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def approve_hardware_change_endpoint(device_id: str):
+    """Approve observed hardware changes, marking latest snapshot trusted and restoring ACTIVE status."""
+    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    try:
+        dev = approve_hardware_change(device_id, admin_name=admin_name)
+        return jsonify({
+            "status": "approved",
+            "device_id": dev.device_id,
+            "device_status": dev.status.value,
+        }), 200
+    except ValueError as exc:
+        return jsonify({"error": "not_found", "message": str(exc)}), 404
+
+
+@devices_bp.route("/unclaimed", methods=["GET"])
+@require_role(UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER)
+def get_unclaimed_devices_endpoint():
+    """Retrieve list of devices in UNCLAIMED status."""
+    unclaimed = PhysicalDevice.query.filter_by(status=DeviceStatus.UNCLAIMED).all()
+    res = []
+    for d in unclaimed:
+        inv = d.inventory
+        res.append({
+            "device_id": d.device_id,
+            "status": d.status.value,
+            "first_seen": d.first_seen.isoformat() if d.first_seen else None,
+            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+            "hostname": inv.hostname if inv else "unknown",
+            "ip_addresses": inv.ip_addresses if inv else [],
+        })
+    return jsonify({"count": len(res), "devices": res}), 200
+
+
+@devices_bp.route("/<device_id>/pair", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def pair_device_endpoint(device_id: str):
+    """Pair an unclaimed device to an institutional asset."""
+    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    payload = request.get_json(silent=True) or {}
+    asset_id = payload.get("asset_id")
+
+    if not asset_id:
+        return jsonify({"error": "invalid_payload", "message": "Missing 'asset_id' in payload"}), 400
+
+    try:
+        dev, asset = pair_unclaimed_device(device_id, asset_id, admin_name=admin_name)
+        return jsonify({
+            "status": "paired",
+            "device_id": dev.device_id,
+            "asset_id": asset.asset_id,
+            "device_status": dev.status.value,
+        }), 200
+    except ValueError as exc:
+        return jsonify({"error": "bad_request", "message": str(exc)}), 400
