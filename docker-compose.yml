@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: venuedesk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: venuedesk
+      POSTGRES_USER: venuedesk
+      POSTGRES_PASSWORD: venuedesk_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venuedesk -d venuedesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./venuedesk-backend
+      dockerfile: Dockerfile
+    container_name: venuedesk-backend
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: production
+      SECRET_KEY: dev-insecure-secret-key-change-in-prod-1234567890
+      DATABASE_URL: postgresql://venuedesk:venuedesk_dev_password@postgres:5432/venuedesk
+      DEPLOYMENT_SALT: venuedesk-default-salt-32-chars-long!
+      ALLOW_UNCLAIMED_ENROLLMENT: "false"
+      PORT: 5001
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

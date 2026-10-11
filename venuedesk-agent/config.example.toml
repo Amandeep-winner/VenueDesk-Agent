@@ -1,0 +1,14 @@
+server_url = "http://127.0.0.1:5001"
+deployment_salt = "venuedesk-default-salt-32-chars-long!"
+heartbeat_seconds = 60
+telemetry_seconds = 60
+inventory_seconds = 21600
+jobs_poll_seconds = 60
+outbox_max_items = 10000
+outbox_ttl_hours = 24
+key_store = "file"
+approved_services = []
+diagnostic_allowlist = ["127.0.0.1", "localhost"]
+allow_insecure_dev = true
+log_level = "INFO"
+state_dir = "data"
