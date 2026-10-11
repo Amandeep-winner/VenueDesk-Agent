@@ -17,6 +17,7 @@ This document tracks all architectural, design, and implementation decisions mad
 | 2026-10-11 | Phase 9 Remote Jobs and Secure Execution | Implemented allowlisted remote job service, dispatch/poll/result API, agent executor, and strict shell=False security invariants per spec §4.10. |
 | 2026-10-11 | Phase 10 Server-Rendered Admin Infrastructure UI | Built Bootstrap 5 UI under /admin/infrastructure/ with CSRF protection, RBAC checks, spec §42/§43/§44 blocks, Chart.js sparkline, pairing token generation, and approval queues. |
 | 2026-10-11 | Phase 11 Packaging, Deployment, and Hardening | Created Linux systemd sandboxed service, evidence cache helper, Windows service installer, production Dockerfile, RUNBOOK.md, and THREAT_MODEL.md. |
+| 2026-10-11 | Phase 12 Full End-to-End Validation | Implemented 11-stage in-process E2E lifecycle test suite, fake endpoint simulation tool, and validation report. |
 
 ## Phase 8 Details
 
@@ -69,5 +70,10 @@ The agent enforces HTTPS server endpoints and rejects unencrypted connections un
 Logging setup applies structured filtering that redacts pairing tokens and secrets from messages and argument dictionaries.
 Documented operational procedures in `RUNBOOK.md` and detailed security controls in `THREAT_MODEL.md`.
 
+## Phase 12 Details
 
-
+Implemented a comprehensive end-to-end lifecycle test suite verifying all 11 stages of the device operational lifecycle.
+The suite drives an in-process Flask server with authentic Ed25519 cryptographic signing, replay checks, and transactional database integrity.
+Stages cover asset provisioning, single-use token generation, agent enrollment, physical verification sign-off, heartbeats and telemetry, benign hardware drift, OS reinstall recovery, dual-boot secondary OS discovery, motherboard replacement, clone detection, and revocation.
+Enhanced the fake endpoint simulation tool `tools/fake_endpoint.py` with multi-stage lifecycle simulation and telemetry streaming.
+Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and operational metrics.
