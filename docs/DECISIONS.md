@@ -88,6 +88,7 @@ Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and o
 | 2026-10-14 | Phase 3 | Pinned fingerprint v1 algorithm and golden vector, enforced tri-state field comparison (None == None is UNKNOWN), established HardwareChangeRecord append-only audit trail, and implemented granular hardware change classification. | Eliminates false matches on empty or degraded evidence fields, preserves forensic hardware history across updates, and prevents automatic re-pairing without administrative authorization. |
 | 2026-10-14 | Phase 4 | Implemented multi-OS support with distinct `os_installation_id` tracking, dedicated `device_credentials` table, device-scoped pairing tokens for secondary OSes, and slot-isolated recovery approval. | Prevents dual-boot endpoints from creating duplicate physical devices or cycling asset links, authenticates each OS under independent credentials, and preserves unaffected OS installations during single-OS reinstall recovery. |
 | 2026-10-14 | Phase 5 | Implemented reliable offline operation with SQLite WAL outbox lifecycle, crash recovery, capacity pressure shedding, bounded backoff with full jitter, server-side `processed_events` idempotency deduplication, and mid-outage credential rotation support. | Ensures reliable delivery across extended network outages, guarantees that duplicate deliveries have zero side effects, protects local client queue stability, and prevents outbox stranding during credential rotation. |
+| 2026-10-14 | Phase 6 | Structured comprehensive test suites across unit, integration, and e2e tiers, added synthetic test fixtures, enforced immutable append-only audit log guards, and hardened multi-platform CI pipelines. | Standardizes test categorization and synthetic device topologies, guarantees that audit records can never be modified or deleted via ORM models, and ensures reliable validation across Linux and Windows environments. |
 
 ## Phase 3 Hardening Details
 
@@ -121,3 +122,11 @@ Exponential backoff applies full jitter bounded between zero and the computed ce
 Server-side idempotency tracks processed event identifiers in `processed_events` with unique composite constraints.
 Server responses acknowledge accepted and duplicate identifiers so the agent can mark events delivered without duplicating database records.
 Queued items are signed dynamically at transmission time rather than enqueue time so credential rotation during network outages does not strand queued messages.
+
+## Phase 6 Hardening Details
+
+Test layouts define dedicated unit, integration, e2e, postgres, and slow execution markers in `pytest.ini` and `pyproject.toml`.
+Shared synthetic fixtures provide reproducible hardware topologies for institutional workstations, missing serial variants, dual-boot setups, and revoked devices.
+SQLAlchemy event listeners on `AuditLog` intercept update and delete events, raising permission errors to guarantee immutable append-only logs.
+The CI workflow configures discrete jobs spanning linting, SQLite backend tests, PostgreSQL 16 container tests, cross-platform agent execution on Linux and Windows, end-to-end workflows, security auditing, and coverage tracking.
+Security scanner suppressions for assert usage in tests and allowlisted subprocess calls are documented in `security/allowlist.md`.

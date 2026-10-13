@@ -28,3 +28,19 @@ class AuditLog(db.Model):
     timestamp = Column(DateTime(timezone=True), nullable=False, default=utc_now, index=True)
     ip_address = Column(String(64), nullable=True)
     metadata_json = Column(JSON, nullable=True)
+
+
+from sqlalchemy import event
+
+
+@event.listens_for(AuditLog, "before_update")
+def receive_before_update(mapper, connection, target):
+    """Enforce append-only invariant: AuditLog records can never be updated."""
+    raise PermissionError("AuditLog records are strictly append-only and cannot be updated.")
+
+
+@event.listens_for(AuditLog, "before_delete")
+def receive_before_delete(mapper, connection, target):
+    """Enforce append-only invariant: AuditLog records can never be deleted."""
+    raise PermissionError("AuditLog records are strictly append-only and cannot be deleted.")
+
