@@ -12,7 +12,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     text,
 )
 from sqlalchemy import Enum as SQLEnum
@@ -71,6 +70,12 @@ class PhysicalDevice(db.Model):
     telemetry = db.relationship("Telemetry", back_populates="device", cascade="all, delete-orphan")
     events = db.relationship("DeviceEvent", back_populates="device", cascade="all, delete-orphan")
     jobs = db.relationship("DeviceJob", back_populates="device", cascade="all, delete-orphan")
+    credentials = db.relationship("DeviceCredential", back_populates="device", cascade="all, delete-orphan")
+
+    @property
+    def active_os_count(self) -> int:
+        """Derived count of active OS installations."""
+        return sum(1 for os_inst in self.os_installations if os_inst.status == OsInstallationStatus.ACTIVE)
 
 
 class AssetDeviceLink(db.Model):
@@ -166,11 +171,12 @@ class OSInstallation(db.Model):
     """Operating system installations observed on a physical host."""
     __tablename__ = "os_installations"
     __table_args__ = (
-        UniqueConstraint("device_id", "os_family", "os_machine_id_hash", name="uq_device_os_installation"),
+        Index("ix_os_inst_device_os_inst_id", "device_id", "os_installation_id"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    os_installation_id = Column(String(64), nullable=True, index=True)
     os_family = Column(SQLEnum(OsFamily, native_enum=False), nullable=False)
     os_name = Column(String(128), nullable=False)
     os_version = Column(String(64), nullable=False)
@@ -232,23 +238,44 @@ class Verification(db.Model):
     device = db.relationship("PhysicalDevice")
 
 
+class DeviceCredential(db.Model):
+    """Cryptographic credentials registered to physical devices across OS installations."""
+    __tablename__ = "device_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    os_installation_id = Column(String(64), nullable=True, index=True)
+    public_key = Column(Text, nullable=False)
+    credential_version = Column(Integer, nullable=False, default=1)
+    status = Column(String(32), nullable=False, default="ACTIVE")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    device = db.relationship("PhysicalDevice", back_populates="credentials")
+
+
 class DeviceRecoveryRequest(db.Model):
     """Pending recovery requests from reinstalled endpoints awaiting admin approval."""
     __tablename__ = "device_recovery_requests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=True, index=True)
+    candidate_device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=True, index=True)
+    evidence_snapshot_id = Column(Integer, ForeignKey("device_identity_evidence.id", ondelete="SET NULL"), nullable=True)
     new_public_key = Column(Text, nullable=False)
     new_agent_instance_id = Column(String(64), nullable=False)
+    new_os_installation_id = Column(String(64), nullable=True)
     new_os_info = Column(JSON, nullable=True)
     new_inventory = Column(JSON, nullable=True)
     new_evidence = Column(JSON, nullable=True)
-    status = Column(String(32), nullable=False, default="PENDING")  # PENDING, APPROVED, REJECTED
+    status = Column(String(32), nullable=False, default="PENDING")  # PENDING, APPROVED, REJECTED, EXPIRED
+    reason = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_by = Column(String(128), nullable=True)
 
-    device = db.relationship("PhysicalDevice")
+    device = db.relationship("PhysicalDevice", foreign_keys=[device_id])
+    candidate_device = db.relationship("PhysicalDevice", foreign_keys=[candidate_device_id])
 
 
 class HardwareChangeRecord(db.Model):

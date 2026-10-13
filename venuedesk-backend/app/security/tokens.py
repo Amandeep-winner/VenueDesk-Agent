@@ -41,6 +41,38 @@ def create_token_for_asset(asset_id: int, created_by: str = "admin", ttl_hours: 
     return raw_token, token_obj
 
 
+def create_token_for_device(
+    device_id: int,
+    created_by: str = "admin",
+    ttl_hours: int = 24,
+    asset_id: int | None = None,
+) -> tuple[str, EnrollmentToken]:
+    """Generate and store device-scoped OS enrollment token, revoking prior active device tokens."""
+    from app.models.enums import TokenScope
+    prior_tokens = EnrollmentToken.query.filter_by(
+        device_id=device_id,
+        scope=TokenScope.DEVICE,
+        status=EnrollmentTokenStatus.ACTIVE,
+    ).all()
+    for tok in prior_tokens:
+        tok.status = EnrollmentTokenStatus.REVOKED
+        tok.revoked_at = datetime.now(UTC)
+
+    raw_token = generate_pairing_token()
+    token_obj = EnrollmentToken(
+        scope=TokenScope.DEVICE,
+        device_id=device_id,
+        asset_id=asset_id,
+        token_hash=hash_token(raw_token),
+        expires_at=datetime.now(UTC) + timedelta(hours=ttl_hours),
+        created_by=created_by,
+        status=EnrollmentTokenStatus.ACTIVE,
+    )
+    db.session.add(token_obj)
+    db.session.flush()
+    return raw_token, token_obj
+
+
 def consume_token_atomically(raw_token: str, device_id: int | None = None) -> EnrollmentToken:
     """Atomically validate and mark pairing token as USED within current transaction."""
     thash = hash_token(raw_token)

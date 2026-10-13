@@ -73,6 +73,7 @@ def recover_agent(
         "os": os_info,
         "agent_version": "0.1.0",
         "agent_instance_id": id_store.agent_instance_id,
+        "os_installation_id": id_store.os_installation_id,
     }
 
     with httpx.Client(timeout=15.0) as client:

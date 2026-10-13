@@ -62,6 +62,11 @@ class OsInstallationStatus(str, Enum):
     HISTORICAL = "HISTORICAL"
 
 
+class TokenScope(str, Enum):
+    ASSET = "ASSET"
+    DEVICE = "DEVICE"
+
+
 class EnrollmentTokenStatus(str, Enum):
     ACTIVE = "ACTIVE"
     USED = "USED"
@@ -98,6 +103,7 @@ class DeviceEventType(str, Enum):
     OS_REINSTALL_DETECTED = "OS_REINSTALL_DETECTED"
     UNCLAIMED_DEVICE_DISCOVERED = "UNCLAIMED_DEVICE_DISCOVERED"
     FINGERPRINT_MIGRATED = "FINGERPRINT_MIGRATED"
+    OS_INSTALLATION_ADDED = "OS_INSTALLATION_ADDED"
 
 
 class JobType(str, Enum):

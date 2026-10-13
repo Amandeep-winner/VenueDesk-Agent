@@ -14,6 +14,11 @@ class IdentityStore:
         return self.db.get_agent_instance_id()
 
     @property
+    def os_installation_id(self) -> str:
+        """Persistent local UUID identifying this specific OS installation."""
+        return self.db.get_os_installation_id()
+
+    @property
     def device_id(self) -> str | None:
         """Assigned control-plane device identifier (e.g. VD-DEVICE-XXXXXXXX)."""
         return self.db.get_device_id()

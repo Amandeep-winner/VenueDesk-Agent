@@ -83,5 +83,7 @@ Unregistered routes fail closed and reject all incoming requests.
 | `devices.create_device_job_endpoint` | `POST /api/v1/admin/devices/<id>/jobs` | Session / HTTP Basic Auth | `infra_admin` | Default |
 | `devices.get_device_jobs_endpoint` | `GET /api/v1/admin/devices/<id>/jobs` | Session / HTTP Basic Auth | `infra_admin`, `infra_viewer` | Default |
 | `devices.get_telemetry_endpoint` | `GET /api/v1/admin/devices/<id>/telemetry` | Session / HTTP Basic Auth | `infra_admin`, `infra_viewer` | Default |
+| `devices.create_os_enrollment_token_endpoint` | `POST /api/v1/admin/devices/<id>/os-token` | Session / HTTP Basic Auth | `infra_admin` | Default |
 | `devices.get_recovery_requests_endpoint` | `GET /api/v1/admin/devices/recovery-requests` | Session / HTTP Basic Auth | `infra_admin`, `infra_viewer` | Default |
 | `devices.get_unclaimed_devices_endpoint` | `GET /api/v1/admin/devices/unclaimed` | Session / HTTP Basic Auth | `infra_admin`, `infra_viewer` | Default |
+

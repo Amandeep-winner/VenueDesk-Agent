@@ -67,6 +67,7 @@ ENDPOINT_POLICY: dict[str, Policy] = {
     "devices.replace_endpoint_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.get_telemetry_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
     "devices.verify_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
+    "devices.create_os_enrollment_token_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.get_recovery_requests_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
     "devices.get_unclaimed_devices_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
 }
@@ -113,8 +114,18 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
     except (ValueError, TypeError):
         return jsonify({"error": "unauthorized", "message": "Invalid key version format"}), 401
 
-    if key_version != device.credential_version:
-        logger.warning("Rejecting request from %s: key version %s != %s", device_id, key_version, device.credential_version)
+    from app.models.device import DeviceCredential
+    active_creds = DeviceCredential.query.filter_by(
+        device_id=device.id,
+        status="ACTIVE",
+    ).all()
+
+    valid_versions = {device.credential_version}
+    if active_creds:
+        valid_versions.update(c.credential_version for c in active_creds)
+
+    if key_version not in valid_versions:
+        logger.warning("Rejecting request from %s: key version %s not in %s", device_id, key_version, valid_versions)
         return jsonify({"error": "unauthorized", "message": "Key version mismatch"}), 401
 
     # 4. Verify Ed25519 signature
@@ -123,7 +134,17 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
     path_with_query = path_with_query.removesuffix("?")
 
     msg = canonical_string(request.method, path_with_query, timestamp_str, nonce, raw_body)
-    if not verify(device.device_public_key, sig_b64, msg):
+    verified = False
+    if active_creds:
+        for cred in active_creds:
+            if cred.credential_version == key_version and verify(cred.public_key, sig_b64, msg):
+                verified = True
+                break
+
+    if not verified and key_version == device.credential_version and verify(device.device_public_key, sig_b64, msg):
+        verified = True
+
+    if not verified:
         logger.warning("Rejecting request from %s: signature verification failed", device_id)
         return jsonify({"error": "unauthorized", "message": "Cryptographic signature verification failed"}), 401
 

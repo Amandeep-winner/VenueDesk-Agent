@@ -3,6 +3,7 @@ from app.models.asset import Asset, AssetSequence, generate_next_asset_id
 from app.models.audit import AuditLog
 from app.models.device import (
     AssetDeviceLink,
+    DeviceCredential,
     DeviceIdentityEvidence,
     DeviceInventory,
     DeviceRecoveryRequest,
@@ -31,6 +32,7 @@ from app.models.enums import (
     OsFamily,
     OsInstallationStatus,
     RelationshipStatus,
+    TokenScope,
     UserRole,
     VerificationMethod,
 )
@@ -49,6 +51,7 @@ __all__ = [
     "AssetVerificationStatus",
     "AuditAction",
     "AuditLog",
+    "DeviceCredential",
     "DeviceEvent",
     "DeviceEventType",
     "DeviceIdentityEvidence",
@@ -72,6 +75,7 @@ __all__ = [
     "RelationshipStatus",
     "RequestNonce",
     "Telemetry",
+    "TokenScope",
     "User",
     "UserRole",
     "Verification",

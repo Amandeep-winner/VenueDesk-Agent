@@ -16,6 +16,7 @@ def send_heartbeat(client: AuthenticatedClient) -> dict[str, Any]:
         "timestamp": now_ts,
         "agent_version": "0.1.0",
         "agent_instance_id": client.id_store.agent_instance_id,
+        "os_installation_id": client.id_store.os_installation_id,
         "status": "ACTIVE",
     }
 

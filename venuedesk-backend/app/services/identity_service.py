@@ -625,10 +625,29 @@ def reconcile_device_inventory(
 
     # 7. OS changed -> OS_CHANGED (MEDIUM)
     if new_os and isinstance(new_os, dict):
-        active_os = OSInstallation.query.filter_by(
-            device_id=device.id,
-            status=OsInstallationStatus.ACTIVE,
-        ).first()
+        os_inst_id = new_os.get("os_installation_id")
+        active_os = None
+        if os_inst_id:
+            active_os = OSInstallation.query.filter_by(
+                device_id=device.id,
+                os_installation_id=os_inst_id,
+            ).first()
+        if not active_os:
+            raw_fam = (new_os.get("family") or "OTHER").upper()
+            try:
+                os_fam = OsFamily(raw_fam)
+                active_os = OSInstallation.query.filter_by(
+                    device_id=device.id,
+                    os_family=os_fam,
+                    status=OsInstallationStatus.ACTIVE,
+                ).first()
+            except ValueError:
+                pass
+        if not active_os:
+            active_os = OSInstallation.query.filter_by(
+                device_id=device.id,
+                status=OsInstallationStatus.ACTIVE,
+            ).first()
         if active_os:
             os_name_changed = new_os.get("name") and new_os.get("name") != active_os.os_name
             os_ver_changed = new_os.get("version") and new_os.get("version") != active_os.os_version
@@ -909,17 +928,6 @@ def approve_device_recovery(
 
     now = datetime.now(UTC)
 
-    # 1. Rotate credentials
-    old_cred_ver = dev.credential_version or 1
-    dev.device_public_key = rec_req.new_public_key
-    dev.credential_version = old_cred_ver + 1
-    dev.status = DeviceStatus.ACTIVE
-    dev.last_seen = now
-
-    # 2. Archive active OS installations and activate the new OS
-    for eos in OSInstallation.query.filter_by(device_id=dev.id, status=OsInstallationStatus.ACTIVE).all():
-        eos.status = OsInstallationStatus.HISTORICAL
-
     os_data = rec_req.new_os_info or {}
     raw_family = (os_data.get("family") or "OTHER").upper()
     try:
@@ -927,37 +935,96 @@ def approve_device_recovery(
     except ValueError:
         os_fam = OsFamily.OTHER
 
+    # 1. Rotate credentials
+    old_cred_ver = dev.credential_version or 1
+    new_cred_ver = old_cred_ver + 1
+    dev.device_public_key = rec_req.new_public_key
+    dev.credential_version = new_cred_ver
+    dev.status = DeviceStatus.ACTIVE
+    dev.last_seen = now
+
+    new_os_inst_id = (
+        rec_req.new_os_installation_id
+        or os_data.get("os_installation_id")
+        or rec_req.new_agent_instance_id
+        or "unknown"
+    )
+
+    # 2. Archive active OS installations for this OS family/slot (in dual boot, other OS remains ACTIVE)
+    matching_active_os = OSInstallation.query.filter_by(
+        device_id=dev.id,
+        os_family=os_fam,
+        status=OsInstallationStatus.ACTIVE,
+    ).all()
+
+    prior_os_inst_ids = set()
+    for eos in matching_active_os:
+        eos.status = OsInstallationStatus.HISTORICAL
+        if eos.os_installation_id:
+            prior_os_inst_ids.add(eos.os_installation_id)
+        if eos.agent_instance_id:
+            prior_os_inst_ids.add(eos.agent_instance_id)
+
+    if not matching_active_os:
+        all_active_os = OSInstallation.query.filter_by(
+            device_id=dev.id,
+            status=OsInstallationStatus.ACTIVE,
+        ).all()
+        if len(all_active_os) == 1:
+            for eos in all_active_os:
+                eos.status = OsInstallationStatus.HISTORICAL
+                if eos.os_installation_id:
+                    prior_os_inst_ids.add(eos.os_installation_id)
+
+    # 3. Revoke previous credentials for the reinstalled slot
+    from app.models.device import DeviceCredential
+    if prior_os_inst_ids:
+        prev_creds = DeviceCredential.query.filter(
+            DeviceCredential.device_id == dev.id,
+            DeviceCredential.os_installation_id.in_(prior_os_inst_ids),
+            DeviceCredential.status == "ACTIVE",
+        ).all()
+        for pcred in prev_creds:
+            pcred.status = "REVOKED"
+            pcred.revoked_at = now
+    else:
+        all_active_creds = DeviceCredential.query.filter_by(device_id=dev.id, status="ACTIVE").all()
+        if len(all_active_creds) <= 1:
+            for pcred in all_active_creds:
+                pcred.status = "REVOKED"
+                pcred.revoked_at = now
+
+    # 4. Register new credential in device_credentials
+    new_cred = DeviceCredential(
+        device_id=dev.id,
+        os_installation_id=new_os_inst_id,
+        public_key=rec_req.new_public_key,
+        credential_version=new_cred_ver,
+        status="ACTIVE",
+        created_at=now,
+    )
+    db.session.add(new_cred)
+
+    # 5. Create new ACTIVE OSInstallation
     os_name = os_data.get("name", "Unknown")
     os_version = os_data.get("version", "Unknown")
     arch = os_data.get("architecture", "Unknown")
     machine_id_hash = os_data.get("os_machine_id_hash", "none")
 
-    existing_matching = OSInstallation.query.filter_by(
+    new_os = OSInstallation(
         device_id=dev.id,
+        os_installation_id=new_os_inst_id,
         os_family=os_fam,
+        os_name=os_name,
+        os_version=os_version,
+        architecture=arch,
         os_machine_id_hash=machine_id_hash,
-    ).first()
-    if existing_matching:
-        existing_matching.os_name = os_name
-        existing_matching.os_version = os_version
-        existing_matching.architecture = arch
-        existing_matching.agent_instance_id = rec_req.new_agent_instance_id
-        existing_matching.status = OsInstallationStatus.ACTIVE
-        existing_matching.last_seen = now
-    else:
-        new_os = OSInstallation(
-            device_id=dev.id,
-            os_family=os_fam,
-            os_name=os_name,
-            os_version=os_version,
-            architecture=arch,
-            os_machine_id_hash=machine_id_hash,
-            agent_instance_id=rec_req.new_agent_instance_id,
-            status=OsInstallationStatus.ACTIVE,
-            first_seen=now,
-            last_seen=now,
-        )
-        db.session.add(new_os)
+        agent_instance_id=rec_req.new_agent_instance_id,
+        status=OsInstallationStatus.ACTIVE,
+        first_seen=now,
+        last_seen=now,
+    )
+    db.session.add(new_os)
 
     # 3. Update inventory if provided
     if rec_req.new_inventory:
@@ -1023,6 +1090,18 @@ def approve_device_recovery(
             old_value={"credential_version": old_cred_ver},
             new_value={"credential_version": dev.credential_version, "status": dev.status.value},
             metadata_json={"recovery_request_id": rec_req.id},
+        )
+    )
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.HARDWARE_CHANGE_APPROVED,
+            entity_type="device",
+            entity_id=dev.device_id,
+            old_value={"status": DeviceStatus.PENDING_REVERIFICATION.value},
+            new_value={"status": dev.status.value, "os_installation_id": new_os_inst_id},
+            metadata_json={"recovery_request_id": rec_req.id, "reason": rec_req.reason or "Admin approved recovery"},
         )
     )
     db.session.commit()

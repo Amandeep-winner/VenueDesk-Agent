@@ -214,6 +214,46 @@ def replace_endpoint_endpoint(device_id: str):
         return jsonify({"error": "bad_request", "message": str(exc)}), 400
 
 
+@devices_bp.route("/<device_id>/os-token", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def create_os_enrollment_token_endpoint(device_id: str):
+    """Generate a single-use device-scoped OS enrollment token to add an OS to an existing device."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    payload = request.get_json(silent=True) or {}
+    ttl_hours = int(payload.get("ttl_hours", 24))
+
+    from app.models.device import AssetDeviceLink
+    from app.models.enums import RelationshipStatus
+    from app.security.tokens import create_token_for_device
+
+    active_link = AssetDeviceLink.query.filter_by(
+        device_id=device.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).first()
+    asset_id = active_link.asset_id if active_link else None
+
+    raw_token, token_obj = create_token_for_device(
+        device_id=device.id,
+        created_by=admin_name,
+        ttl_hours=ttl_hours,
+        asset_id=asset_id,
+    )
+    db.session.commit()
+
+    return jsonify({
+        "raw_token": raw_token,
+        "token_hash": token_obj.token_hash,
+        "device_id": device.device_id,
+        "asset_id": active_link.asset.asset_id if active_link and active_link.asset else None,
+        "scope": "DEVICE",
+        "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+    }), 201
+
+
 @devices_bp.route("/recovery-requests", methods=["GET"])
 @require_role(UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER)
 def get_recovery_requests_endpoint():

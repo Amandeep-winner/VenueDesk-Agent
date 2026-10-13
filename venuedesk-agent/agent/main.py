@@ -1,8 +1,10 @@
-"""VenueDesk Agent Command-Line Interface."""
 import json
+import logging
 from pathlib import Path
 
 import click
+
+logger = logging.getLogger(__name__)
 
 from agent.collectors import collect_identity_evidence
 from agent.config import AgentConfig
@@ -24,6 +26,7 @@ def output_identity(config: AgentConfig) -> None:
     evidence = collect_identity_evidence()
     payload = evidence.to_evidence_payload(config.deployment_salt)
     payload["agent_instance_id"] = id_store.agent_instance_id
+    payload["os_installation_id"] = id_store.os_installation_id
     payload["device_id"] = id_store.device_id
     payload["device_public_key"] = pub_key_b64
     payload["strong_anchors"] = sorted(evidence.strong_anchors())
@@ -54,7 +57,30 @@ def cli(ctx: click.Context, config_file: str | None, flag_print_identity: bool) 
 @click.pass_context
 def run(ctx: click.Context) -> None:
     """Start the agent daemon service."""
+    config: AgentConfig = ctx.obj["config"]
     click.echo("Starting VenueDesk Agent daemon...")
+
+    from pathlib import Path
+
+    from agent.identity.device_id import IdentityStore
+    from agent.identity.keys import get_keystore
+    from agent.storage.database import AgentDatabase
+
+    db_path = Path(config.state_dir) / "agent_state.db"
+    db = AgentDatabase(db_path)
+    id_store = IdentityStore(db)
+    keystore = get_keystore(config)
+
+    if (not id_store.is_enrolled() or not keystore.has_key()) and config.server_url and not config.pairing_token:
+        logger.info("Agent state or key missing. Entering awaiting recovery mode...")
+        click.echo("Awaiting administrator recovery approval...")
+        try:
+            from agent.communication.recovery import recover_agent
+            result = recover_agent(config, wait_for_approval=True, poll_timeout_seconds=300)
+            click.echo(f"Recovery approved! Enrolled device: {result.get('device_id')}")
+        except (RuntimeError, ValueError, TimeoutError, OSError) as exc:
+            logger.warning("Recovery polling ended: %s", exc)
+            return
 
 
 @cli.command()

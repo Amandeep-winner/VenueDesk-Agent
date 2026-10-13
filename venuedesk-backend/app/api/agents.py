@@ -170,10 +170,19 @@ def recover():
         db.session.add(event)
 
         from app.models import DeviceRecoveryRequest
+        os_info = payload.get("os") or {}
+        new_os_id = (
+            payload.get("os_installation_id")
+            or os_info.get("os_installation_id")
+            or payload.get("agent_instance_id")
+            or "unknown"
+        )
         rec_req = DeviceRecoveryRequest(
             device_id=candidate.id,
+            candidate_device_id=candidate.id,
             new_public_key=pub_key_b64,
             new_agent_instance_id=payload.get("agent_instance_id") or "unknown",
+            new_os_installation_id=new_os_id,
             new_os_info=payload.get("os"),
             new_inventory=payload.get("inventory"),
             new_evidence=payload.get("identity_evidence"),
@@ -253,14 +262,25 @@ def heartbeat():
 
     # Duplicate device detection (§4.9)
     inst_id = payload.get("agent_instance_id")
-    if inst_id:
+    os_inst_id = payload.get("os_installation_id") or inst_id
+    if os_inst_id or inst_id:
         active_os = OSInstallation.query.filter_by(
             device_id=device.id,
             status=OsInstallationStatus.ACTIVE,
         ).all()
-        known_inst_ids = {os_inst.agent_instance_id for os_inst in active_os}
+        known_inst_ids = {os_inst.agent_instance_id for os_inst in active_os if os_inst.agent_instance_id}
+        known_os_ids = {os_inst.os_installation_id for os_inst in active_os if os_inst.os_installation_id}
+        known_all = known_inst_ids | known_os_ids
 
-        if known_inst_ids and inst_id not in known_inst_ids:
+        target_os = None
+        if os_inst_id:
+            target_os = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=os_inst_id).first()
+        if not target_os and inst_id:
+            target_os = OSInstallation.query.filter_by(device_id=device.id, agent_instance_id=inst_id).first()
+        if target_os:
+            target_os.last_seen = now
+
+        if known_all and inst_id and inst_id not in known_all and os_inst_id not in known_all:
             dup_window = current_app.config.get("DUPLICATE_WINDOW_SECONDS", 120)
             if device.last_seen:
                 last_seen_dt = device.last_seen if device.last_seen.tzinfo else device.last_seen.replace(tzinfo=UTC)
@@ -274,7 +294,7 @@ def heartbeat():
                         payload={
                             "message": "Heartbeat from unexpected agent_instance_id within active window",
                             "observed_instance_id": inst_id,
-                            "registered_instance_ids": sorted(known_inst_ids),
+                            "registered_instance_ids": sorted(known_all),
                         },
                         occurred_at=now,
                         created_at=now,
@@ -440,15 +460,28 @@ def post_inventory():
             os_fam = OsFamily.OTHER
 
         m_hash = os_data.get("os_machine_id_hash", "unknown")
+        os_inst_id = (
+            payload.get("os_installation_id")
+            or os_data.get("os_installation_id")
+            or payload.get("agent_instance_id")
+            or "unknown"
+        )
         os_inst = OSInstallation.query.filter_by(
             device_id=device.id,
-            os_family=os_fam,
-            os_machine_id_hash=m_hash,
+            os_installation_id=os_inst_id,
         ).first()
+
+        if not os_inst and m_hash != "unknown":
+            os_inst = OSInstallation.query.filter_by(
+                device_id=device.id,
+                os_family=os_fam,
+                os_machine_id_hash=m_hash,
+            ).first()
 
         if not os_inst:
             os_inst = OSInstallation(
                 device_id=device.id,
+                os_installation_id=os_inst_id,
                 os_family=os_fam,
                 os_name=os_data.get("name", "Unknown"),
                 os_version=os_data.get("version", "Unknown"),
@@ -460,7 +493,19 @@ def post_inventory():
                 status=OsInstallationStatus.ACTIVE,
             )
             db.session.add(os_inst)
+            db.session.add(
+                DeviceEvent(
+                    device_id=device.id,
+                    event_type=DeviceEventType.OS_INSTALLATION_ADDED,
+                    severity=EventSeverity.INFO,
+                    payload={"os_installation_id": os_inst_id, "os_family": os_fam.value},
+                    occurred_at=now,
+                    created_at=now,
+                )
+            )
         else:
+            if not os_inst.os_installation_id or os_inst.os_installation_id == "unknown":
+                os_inst.os_installation_id = os_inst_id
             os_inst.os_name = os_data.get("name", os_inst.os_name)
             os_inst.os_version = os_data.get("version", os_inst.os_version)
             os_inst.architecture = os_data.get("architecture", os_inst.architecture)
