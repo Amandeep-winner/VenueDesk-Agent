@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.security.signatures import require_device_auth, verify
 from app.services.enrollment_service import enroll_agent
+from app.services.identity_service import LinkConflictError
 
 agents_bp = Blueprint("agents", __name__, url_prefix="/api/v1/agents")
 
@@ -64,6 +65,9 @@ def enroll():
         return jsonify(res), 200
     except PermissionError as exc:
         return jsonify({"error": "unclaimed_enrollment_disabled", "message": str(exc)}), 403
+    except LinkConflictError as exc:
+        db.session.rollback()
+        return jsonify({"error": "invalid_enrollment_token", "message": str(exc)}), 400
     except ValueError as exc:
         # Audit failed enrollment attempt
         try:

@@ -22,10 +22,10 @@ class DevelopmentConfig(BaseConfig):
 
 
 class TestingConfig(BaseConfig):
-    """Testing environment configuration using in-memory SQLite."""
+    """Testing environment configuration using in-memory SQLite or TEST_DATABASE_URL."""
     TESTING = True
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
     ALLOW_UNCLAIMED_ENROLLMENT = False
 
 

@@ -9,7 +9,7 @@ from app.extensions import db, migrate
 from app.security.csrf import get_csrf_token
 
 
-def create_app(config_name=None):
+def create_app(config_name=None, test_config=None):
     """Create and configure the Flask application instance."""
     if config_name is None:
         config_name = os.getenv("FLASK_ENV", "development")
@@ -17,6 +17,8 @@ def create_app(config_name=None):
     flask_app = Flask(__name__)
     config_obj = config_by_name.get(config_name, config_by_name["default"])
     flask_app.config.from_object(config_obj)
+    if test_config:
+        flask_app.config.update(test_config)
 
     # Initialize extensions
     db.init_app(flask_app)

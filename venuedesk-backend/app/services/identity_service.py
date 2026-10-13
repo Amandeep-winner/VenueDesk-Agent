@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, OperationalError
+
 from app.extensions import db
 from app.models import (
     ActorType,
@@ -27,11 +30,22 @@ from app.models import (
     OsInstallationStatus,
     PhysicalDevice,
     RelationshipStatus,
+    UserRole,
     Verification,
     VerificationMethod,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class LinkConflictError(Exception):
+    """Raised when an asset or device already has an active link and reassignment is not permitted."""
+
+    def __init__(self, message: str = "Link conflict: device or asset already linked"):
+        super().__init__(message)
+        self.status_code = 409
+        self.error_code = "link_conflict"
+
 
 
 class IdentityDecision(str, Enum):
@@ -513,62 +527,184 @@ def approve_hardware_change(device_identifier: str | int, admin_name: str) -> Ph
     return dev
 
 
+def pair_device(
+    device_identifier: str | int,
+    asset_identifier: str | int,
+    admin_name: str = "system",
+    actor_role: UserRole | str | None = None,
+    reassignment: bool = False,
+    reason: str | None = None,
+    commit: bool = True,
+    _inject_failure: bool = False,
+    _caller: str = "admin",
+) -> tuple[PhysicalDevice, Asset, AssetDeviceLink]:
+    """Pair an endpoint to an institutional asset with strict concurrency and state checks."""
+    bind = db.session.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
+    is_sqlite = bind.dialect.name == "sqlite"
+
+    try:
+        if is_sqlite:
+            try:
+                db.session.execute(text("BEGIN IMMEDIATE"))
+            except (OperationalError, db.exc.SQLAlchemyError) as exc:
+                logger.debug("SQLite immediate lock skipped: %s", exc)
+
+        # 1. Load device with row lock
+        dev_query = (
+            PhysicalDevice.query.filter_by(device_id=str(device_identifier))
+            if isinstance(device_identifier, str)
+            else PhysicalDevice.query.filter_by(id=device_identifier)
+        )
+        if is_pg:
+            dev_query = dev_query.with_for_update()
+        dev = dev_query.first()
+        if not dev:
+            raise ValueError(f"Device {device_identifier} not found")
+
+        # Load asset with row lock
+        asset_query = (
+            Asset.query.filter_by(asset_id=str(asset_identifier))
+            if isinstance(asset_identifier, str)
+            else Asset.query.filter_by(id=asset_identifier)
+        )
+        if is_pg:
+            asset_query = asset_query.with_for_update()
+        asset = asset_query.first()
+        if not asset:
+            raise ValueError(f"Asset {asset_identifier} not found")
+
+        # 2. Validate lifecycle status
+        if asset.lifecycle_status in (AssetLifecycleStatus.RETIRED, AssetLifecycleStatus.DISPOSED):
+            raise ValueError(f"Asset {asset.asset_id} is {asset.lifecycle_status.value} and cannot be paired")
+
+        if dev.status in (DeviceStatus.REVOKED, DeviceStatus.RETIRED):
+            raise ValueError(f"Device {dev.device_id} is {dev.status.value} and cannot be paired")
+
+        if _caller != "enrollment":
+            allowed_statuses = (
+                DeviceStatus.UNCLAIMED,
+                DeviceStatus.PENDING_REVERIFICATION,
+                DeviceStatus.PENDING_VERIFICATION,
+                DeviceStatus.ENROLLING,
+            )
+            if not reassignment and dev.status not in allowed_statuses:
+                raise ValueError(f"Device {dev.device_id} status {dev.status.value} does not permit initial pairing")
+
+        # 3. Look up active links
+        existing_asset_link = AssetDeviceLink.query.filter_by(
+            asset_id=asset.id,
+            relationship_status=RelationshipStatus.ACTIVE,
+        ).first()
+
+        existing_device_link = AssetDeviceLink.query.filter_by(
+            device_id=dev.id,
+            relationship_status=RelationshipStatus.ACTIVE,
+        ).first()
+
+        has_existing = (existing_asset_link is not None) or (existing_device_link is not None)
+
+        # 4. Conflict check
+        if has_existing:
+            role_val = actor_role.value if hasattr(actor_role, "value") else str(actor_role or "")
+            is_infra_admin = role_val == UserRole.INFRA_ADMIN.value or role_val == "infra_admin"
+            if not reassignment or not (reason and reason.strip()) or not is_infra_admin:
+                raise LinkConflictError("Link conflict: device or asset already has an active link")
+
+            # 5. Reassignment authorized: close old link(s)
+            now = datetime.now(UTC)
+            if existing_asset_link:
+                existing_asset_link.relationship_status = RelationshipStatus.CLOSED
+                existing_asset_link.unlinked_at = now
+                existing_asset_link.reason = reason
+                db.session.add(
+                    AuditLog(
+                        actor_id=admin_name,
+                        actor_type=ActorType.USER if admin_name != "system" else ActorType.SYSTEM,
+                        action=AuditAction.DEVICE_UNLINKED,
+                        entity_type="link",
+                        entity_id=f"{asset.asset_id}:{existing_asset_link.device_id}",
+                        old_value={"relationship_status": "ACTIVE"},
+                        new_value={"relationship_status": "CLOSED", "reason": reason},
+                    )
+                )
+            if existing_device_link and existing_device_link != existing_asset_link:
+                existing_device_link.relationship_status = RelationshipStatus.CLOSED
+                existing_device_link.unlinked_at = now
+                existing_device_link.reason = reason
+                db.session.add(
+                    AuditLog(
+                        actor_id=admin_name,
+                        actor_type=ActorType.USER if admin_name != "system" else ActorType.SYSTEM,
+                        action=AuditAction.DEVICE_UNLINKED,
+                        entity_type="link",
+                        entity_id=f"{existing_device_link.asset_id}:{dev.device_id}",
+                        old_value={"relationship_status": "ACTIVE"},
+                        new_value={"relationship_status": "CLOSED", "reason": reason},
+                    )
+                )
+            db.session.flush()
+
+        # 6. Create new ACTIVE link
+        now = datetime.now(UTC)
+        link = AssetDeviceLink(
+            asset_id=asset.id,
+            device_id=dev.id,
+            relationship_status=RelationshipStatus.ACTIVE,
+            linked_at=now,
+            linked_by=admin_name,
+            reason=reason or ("Admin paired unclaimed device" if admin_name != "system" else "asset-scoped enrollment token"),
+        )
+        db.session.add(link)
+
+        dev.status = DeviceStatus.PENDING_VERIFICATION
+        asset.lifecycle_status = AssetLifecycleStatus.PENDING_VERIFICATION
+
+        db.session.add(
+            AuditLog(
+                actor_id=admin_name,
+                actor_type=ActorType.USER if admin_name != "system" else ActorType.SYSTEM,
+                action=AuditAction.DEVICE_LINKED,
+                entity_type="link",
+                entity_id=f"{asset.asset_id}:{dev.device_id}",
+                new_value={"asset_id": asset.asset_id, "device_id": dev.device_id, "reason": link.reason},
+            )
+        )
+
+        if _inject_failure:
+            raise RuntimeError("Injected failure mid-transaction for test")
+
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
+
+        return dev, asset, link
+
+    except (IntegrityError, OperationalError) as e:
+        db.session.rollback()
+        raise LinkConflictError("Link conflict: active link already exists") from e
+    except Exception:
+        db.session.rollback()
+        raise
+
+
 def pair_unclaimed_device(
     device_identifier: str | int,
     asset_identifier: str | int,
     admin_name: str,
+    actor_role: UserRole | str | None = UserRole.INFRA_ADMIN,
 ) -> tuple[PhysicalDevice, Asset]:
-    """Pair an unclaimed endpoint to an institutional asset."""
-    dev = (
-        PhysicalDevice.query.filter_by(device_id=str(device_identifier)).first()
-        if isinstance(device_identifier, str)
-        else db.session.get(PhysicalDevice, device_identifier)
+    """Pair an unclaimed endpoint to an institutional asset (compatibility wrapper)."""
+    dev, asset, _ = pair_device(
+        device_identifier=device_identifier,
+        asset_identifier=asset_identifier,
+        admin_name=admin_name,
+        actor_role=actor_role,
+        reassignment=False,
     )
-    if not dev:
-        raise ValueError(f"Device {device_identifier} not found")
-
-    asset = (
-        Asset.query.filter_by(asset_id=str(asset_identifier)).first()
-        if isinstance(asset_identifier, str)
-        else db.session.get(Asset, asset_identifier)
-    )
-    if not asset:
-        raise ValueError(f"Asset {asset_identifier} not found")
-
-    # Check if asset already has an active link
-    existing_link = AssetDeviceLink.query.filter_by(
-        asset_id=asset.id,
-        relationship_status=RelationshipStatus.ACTIVE,
-    ).first()
-    if existing_link:
-        raise ValueError(f"Asset {asset.asset_id} already has an active device link")
-
-    now = datetime.now(UTC)
-    link = AssetDeviceLink(
-        asset_id=asset.id,
-        device_id=dev.id,
-        relationship_status=RelationshipStatus.ACTIVE,
-        linked_at=now,
-        linked_by=admin_name,
-        reason="Admin paired unclaimed device",
-    )
-    db.session.add(link)
-
-    dev.status = DeviceStatus.PENDING_VERIFICATION
-    asset.lifecycle_status = AssetLifecycleStatus.PENDING_VERIFICATION
-
-    db.session.add(
-        AuditLog(
-            actor_id=admin_name,
-            actor_type=ActorType.USER,
-            action=AuditAction.DEVICE_LINKED,
-            entity_type="link",
-            entity_id=f"{asset.asset_id}:{dev.device_id}",
-            new_value={"asset_id": asset.asset_id, "device_id": dev.device_id},
-        )
-    )
-    db.session.commit()
     return dev, asset
+
 
 
 def approve_device_recovery(

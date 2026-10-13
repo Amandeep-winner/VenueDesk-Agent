@@ -83,4 +83,5 @@ Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and o
 | Date | Phase | Decision | Reason |
 | --- | --- | --- | --- |
 | 2026-10-14 | Phase 0 | Established baseline with 133 passing tests across backend, agent, and e2e suites. | Operating rule 3 requires verifying baseline reproducibility before introducing identity refactoring. |
+| 2026-10-14 | Phase 1 | Rewrote device pairing into canonical `pair_device` service function, added partial unique indexes `uq_active_link_per_asset` and `uq_active_link_per_device`, and created duplicate link cleanup runbook. Initial tests reproduced that the legacy code lacked row locks, lacked active device link checks, permitted concurrent duplicate links under race conditions, and constructed links outside a unified module. | Phase 1 requirements mandate single active link database constraints, atomic reassignment, and centralized link creation to prevent asset-device corruption. |
 

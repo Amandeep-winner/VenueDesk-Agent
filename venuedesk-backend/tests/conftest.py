@@ -8,6 +8,8 @@ from app.extensions import db
 @pytest.fixture
 def app():
     """Create test application configured for testing."""
+    from app.api.agents import reset_rate_limits
+    reset_rate_limits()
     app = create_app(config_name="testing")
     with app.app_context():
         db.create_all()

@@ -7,9 +7,10 @@ from app.extensions import db
 from app.models import DeviceRecoveryRequest, DeviceStatus, PhysicalDevice, UserRole
 from app.security.rbac import require_role
 from app.services.identity_service import (
+    LinkConflictError,
     approve_device_recovery,
     approve_hardware_change,
-    pair_unclaimed_device,
+    pair_device,
     replace_device_endpoint,
     verify_device_physical,
 )
@@ -112,14 +113,26 @@ def pair_device_endpoint(device_id: str):
     if not asset_id:
         return jsonify({"error": "invalid_payload", "message": "Missing 'asset_id' in payload"}), 400
 
+    reassignment = bool(payload.get("reassignment", False))
+    reason = payload.get("reason")
+
     try:
-        dev, asset = pair_unclaimed_device(device_id, asset_id, admin_name=admin_name)
+        dev, asset, _link = pair_device(
+            device_identifier=device_id,
+            asset_identifier=asset_id,
+            admin_name=admin_name,
+            actor_role=UserRole.INFRA_ADMIN,
+            reassignment=reassignment,
+            reason=reason,
+        )
         return jsonify({
             "status": "paired",
             "device_id": dev.device_id,
             "asset_id": asset.asset_id,
             "device_status": dev.status.value,
         }), 200
+    except LinkConflictError as exc:
+        return jsonify({"error": "link_conflict", "message": str(exc)}), 409
     except ValueError as exc:
         return jsonify({"error": "bad_request", "message": str(exc)}), 400
 

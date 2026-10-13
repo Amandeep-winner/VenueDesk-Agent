@@ -193,3 +193,19 @@ Request nonces are opportunistically pruned on writes and can be cleaned via CLI
 ```bash
 flask purge-nonces
 ```
+
+## 13. Duplicate Active Link Detection and Cleanup
+
+Before applying migrations that enforce database-level partial unique indexes on `asset_device_links`, ensure no duplicate ACTIVE links exist.
+Run the detection tool from the repository root:
+
+```bash
+python tools/find_duplicate_links.py
+```
+
+If duplicate ACTIVE links are detected, follow this remediation procedure:
+1. Identify the conflicting device IDs and asset IDs listed in the tool output.
+2. For each conflict, consult physical inventory records to determine which link reflects the current physical placement.
+3. For obsolete active links, close the relationship in the database by setting `relationship_status = 'CLOSED'`, `unlinked_at = NOW()`, and `reason = 'Manual resolution of duplicate active links prior to hardening migration'`.
+4. Re-run `python tools/find_duplicate_links.py` to confirm that zero duplicate ACTIVE links remain.
+5. Apply database migrations using `flask db upgrade`.

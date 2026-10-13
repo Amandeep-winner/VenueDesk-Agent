@@ -8,10 +8,12 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SQLEnum
 
@@ -73,6 +75,23 @@ class PhysicalDevice(db.Model):
 class AssetDeviceLink(db.Model):
     """Mapping between an institutional Asset and a PhysicalDevice."""
     __tablename__ = "asset_device_links"
+
+    __table_args__ = (
+        Index(
+            "uq_active_link_per_asset",
+            "asset_id",
+            unique=True,
+            postgresql_where=text("relationship_status = 'ACTIVE'"),
+            sqlite_where=text("relationship_status = 'ACTIVE'"),
+        ),
+        Index(
+            "uq_active_link_per_device",
+            "device_id",
+            unique=True,
+            postgresql_where=text("relationship_status = 'ACTIVE'"),
+            sqlite_where=text("relationship_status = 'ACTIVE'"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     asset_id = Column(Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)

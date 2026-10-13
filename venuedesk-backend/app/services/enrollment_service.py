@@ -9,8 +9,6 @@ from app.extensions import db
 from app.models import (
     ActorType,
     Asset,
-    AssetDeviceLink,
-    AssetLifecycleStatus,
     AuditAction,
     AuditLog,
     DeviceEvent,
@@ -24,7 +22,6 @@ from app.models import (
     OSInstallation,
     OsInstallationStatus,
     PhysicalDevice,
-    RelationshipStatus,
     generate_device_id,
 )
 from app.security.replay import check_and_record_nonce
@@ -102,20 +99,18 @@ def enroll_agent(payload: dict, source_ip: str) -> dict:
     if token_row:
         token_row.used_by_device_id = device.id
 
-    # 7. Create AssetDeviceLink if token mode
+    # 7. Create AssetDeviceLink via canonical pair_device function
     if asset:
-        link = AssetDeviceLink(
-            asset_id=asset.id,
-            device_id=device.id,
-            relationship_status=RelationshipStatus.ACTIVE,
-            linked_at=now,
-            linked_by="system",
-            reason="asset-scoped enrollment token",
-        )
-        db.session.add(link)
-        asset.lifecycle_status = AssetLifecycleStatus.PENDING_VERIFICATION
+        from app.services.identity_service import pair_device
 
-        # Audit logs
+        _, _, _link = pair_device(
+            device_identifier=device.id,
+            asset_identifier=asset.id,
+            admin_name="system",
+            commit=False,
+            _caller="enrollment",
+        )
+
         db.session.add(
             AuditLog(
                 actor_id=source_ip,
@@ -124,17 +119,6 @@ def enroll_agent(payload: dict, source_ip: str) -> dict:
                 entity_type="device",
                 entity_id=device.device_id,
                 new_value={"status": device.status.value, "asset_id": asset.asset_id},
-                ip_address=source_ip,
-            )
-        )
-        db.session.add(
-            AuditLog(
-                actor_id="system",
-                actor_type=ActorType.SYSTEM,
-                action=AuditAction.DEVICE_LINKED,
-                entity_type="link",
-                entity_id=f"{asset.asset_id}:{device.device_id}",
-                new_value={"asset_id": asset.asset_id, "device_id": device.device_id},
                 ip_address=source_ip,
             )
         )
