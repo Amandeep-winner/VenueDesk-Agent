@@ -38,7 +38,7 @@ from app.models.enums import (
 )
 from app.models.job import DeviceJob
 from app.models.nonce import RequestNonce
-from app.models.telemetry import DeviceEvent, Telemetry
+from app.models.telemetry import DeviceEvent, ProcessedEvent, Telemetry
 from app.models.user import User
 
 __all__ = [
@@ -72,6 +72,7 @@ __all__ = [
     "OsFamily",
     "OsInstallationStatus",
     "PhysicalDevice",
+    "ProcessedEvent",
     "RelationshipStatus",
     "RequestNonce",
     "Telemetry",

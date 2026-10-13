@@ -52,3 +52,18 @@ class DeviceEvent(db.Model):
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
 
     device = db.relationship("PhysicalDevice", back_populates="events")
+
+
+class ProcessedEvent(db.Model):
+    """Server-side idempotency record tracking processed event IDs per device."""
+    __tablename__ = "processed_events"
+    __table_args__ = (
+        db.UniqueConstraint("device_id", "event_id", name="uq_processed_events_device_event"),
+        Index("idx_processed_events_device_time", "device_id", "processed_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(String(64), nullable=False, index=True)
+    processed_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+

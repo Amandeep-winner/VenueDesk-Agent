@@ -87,6 +87,7 @@ Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and o
 | 2026-10-14 | Phase 2 | Hardened authentication pipeline with 7-step cryptographic verification order, atomic single-statement nonce insertion and token consumption, centralized `@enforce_policy` decorator with complete endpoint policy registry, `RedactingFilter` for logs, and fail-closed security for all `/api/` routes. | Eliminates check-then-insert race conditions in replay defense, prevents information leakage by returning uniform 401 and 400 responses, and guarantees endpoint access invariants across all device lifecycle states. |
 | 2026-10-14 | Phase 3 | Pinned fingerprint v1 algorithm and golden vector, enforced tri-state field comparison (None == None is UNKNOWN), established HardwareChangeRecord append-only audit trail, and implemented granular hardware change classification. | Eliminates false matches on empty or degraded evidence fields, preserves forensic hardware history across updates, and prevents automatic re-pairing without administrative authorization. |
 | 2026-10-14 | Phase 4 | Implemented multi-OS support with distinct `os_installation_id` tracking, dedicated `device_credentials` table, device-scoped pairing tokens for secondary OSes, and slot-isolated recovery approval. | Prevents dual-boot endpoints from creating duplicate physical devices or cycling asset links, authenticates each OS under independent credentials, and preserves unaffected OS installations during single-OS reinstall recovery. |
+| 2026-10-14 | Phase 5 | Implemented reliable offline operation with SQLite WAL outbox lifecycle, crash recovery, capacity pressure shedding, bounded backoff with full jitter, server-side `processed_events` idempotency deduplication, and mid-outage credential rotation support. | Ensures reliable delivery across extended network outages, guarantees that duplicate deliveries have zero side effects, protects local client queue stability, and prevents outbox stranding during credential rotation. |
 
 ## Phase 3 Hardening Details
 
@@ -108,3 +109,15 @@ The heartbeat and inventory update routes match and update the specific calling 
 Admin recovery approval isolates the reinstalled OS slot based on candidate operating system family.
 Only the reinstalled OS installation is marked historical and its credentials revoked.
 Alternative OS installations on the same physical host remain active and undisturbed.
+
+## Phase 5 Hardening Details
+
+The local outbox table enforces a persistent state machine across pending, in-flight, delivered, and permanent failure states.
+On startup, in-flight events older than 60 seconds automatically revert to pending to recover from agent crashes.
+Queue storage operates in SQLite WAL mode with synchronous set to normal and atomic transactional guarantees.
+Buffer pressure sheds lowest-priority oldest telemetry samples first and never drops priority 0 items before time-to-live expiration.
+Corrupted database files are moved aside to timestamped backups while a fresh database is initialized with an outbox reset event.
+Exponential backoff applies full jitter bounded between zero and the computed ceiling, capping delays at five minutes and honoring retry-after headers.
+Server-side idempotency tracks processed event identifiers in `processed_events` with unique composite constraints.
+Server responses acknowledge accepted and duplicate identifiers so the agent can mark events delivered without duplicating database records.
+Queued items are signed dynamically at transmission time rather than enqueue time so credential rotation during network outages does not strand queued messages.

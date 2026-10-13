@@ -370,6 +370,20 @@ def rotate_credential():
     device.device_public_key = new_pub_key
     device.credential_version = old_ver + 1
 
+    from app.models.device import DeviceCredential
+    now = datetime.now(UTC)
+    DeviceCredential.query.filter_by(device_id=device.id, status="ACTIVE").update(
+        {"status": "REVOKED", "revoked_at": now}
+    )
+    new_cred = DeviceCredential(
+        device_id=device.id,
+        public_key=new_pub_key,
+        credential_version=device.credential_version,
+        status="ACTIVE",
+        created_at=now,
+    )
+    db.session.add(new_cred)
+
     db.session.add(
         AuditLog(
             actor_id=device.device_id,
@@ -395,6 +409,16 @@ def post_inventory():
     """Update observed endpoint technical inventory snapshot and OS installation."""
     device = g.current_device
     payload = request.get_json(silent=True) or {}
+    event_id = payload.get("event_id")
+    if event_id:
+        from app.services.idempotency_service import record_processed_event
+        if not record_processed_event(device.id, event_id):
+            return jsonify({
+                "status": "inventory_updated",
+                "accepted": [],
+                "duplicates": [event_id],
+            }), 200
+
     inv_data = payload.get("inventory") or payload
     os_data = payload.get("os")
 
@@ -515,7 +539,11 @@ def post_inventory():
     device.last_seen = now
     db.session.commit()
 
-    return jsonify({"status": "inventory_updated"}), 200
+    return jsonify({
+        "status": "inventory_updated",
+        "accepted": [event_id] if event_id else [],
+        "duplicates": [],
+    }), 200
 
 
 @agents_bp.route("/telemetry", methods=["POST"])
@@ -541,9 +569,32 @@ def post_telemetry():
             "message": f"Telemetry batch exceeds maximum limit of 500 samples (received {len(samples)})",
         }), 413
 
+    # Extract event_ids if present for idempotency deduplication
+    sample_event_ids = [
+        s.get("event_id") for s in samples if isinstance(s, dict) and s.get("event_id")
+    ]
+    accepted_ids: list[str] = []
+    duplicate_ids: list[str] = []
+
+    if sample_event_ids:
+        from app.services.idempotency_service import record_processed_events_batch
+        accepted_ids, duplicate_ids = record_processed_events_batch(device.id, sample_event_ids)
+        dup_set = set(duplicate_ids)
+        samples_to_record = [
+            s for s in samples
+            if not (isinstance(s, dict) and s.get("event_id") and s.get("event_id") in dup_set)
+        ]
+    else:
+        samples_to_record = samples
+
     from app.services.telemetry_service import record_telemetry
-    count = record_telemetry(device.id, samples)
-    return jsonify({"status": "recorded", "count": count}), 200
+    count = record_telemetry(device.id, samples_to_record)
+    return jsonify({
+        "status": "recorded",
+        "count": count,
+        "accepted": accepted_ids,
+        "duplicates": duplicate_ids,
+    }), 200
 
 
 @agents_bp.route("/identity", methods=["POST"])
@@ -552,6 +603,16 @@ def post_identity():
     """Submit updated device identity evidence snapshot."""
     device = g.current_device
     payload = request.get_json(silent=True) or {}
+    event_id = payload.get("event_id")
+    if event_id:
+        from app.services.idempotency_service import record_processed_event
+        if not record_processed_event(device.id, event_id):
+            return jsonify({
+                "status": "identity_received",
+                "accepted": [],
+                "duplicates": [event_id],
+            }), 200
+
     ev_data = payload.get("identity_evidence") or payload
 
     now = datetime.now(UTC)
@@ -582,7 +643,11 @@ def post_identity():
     except (ImportError, AttributeError):
         pass
 
-    return jsonify({"status": "identity_received"}), 200
+    return jsonify({
+        "status": "identity_received",
+        "accepted": [event_id] if event_id else [],
+        "duplicates": [],
+    }), 200
 
 
 @agents_bp.route("/jobs", methods=["GET"])
