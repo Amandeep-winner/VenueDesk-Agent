@@ -70,6 +70,11 @@ ENDPOINT_POLICY: dict[str, Policy] = {
     "devices.create_os_enrollment_token_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.get_recovery_requests_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
     "devices.get_unclaimed_devices_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
+    "devices.suspend_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
+    "devices.unsuspend_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
+    "devices.retire_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
+    "devices.rotate_credential_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
+    "devices.revoke_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
 }
 
 

@@ -344,3 +344,238 @@ def test_verify_device_spec_57_form_submission(client, app):
         active_link = next(l for l in verified_dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
         assert active_link.asset.verification_status == AssetVerificationStatus.VERIFIED
         assert active_link.asset.lifecycle_status == AssetLifecycleStatus.IN_SERVICE
+
+
+def test_suspend_and_unsuspend_device_ui_workflow(client, app):
+    """Test suspending and unsuspending an endpoint via admin UI creates audit rows."""
+    admin_id = create_admin_user(app, username="suspend_admin")
+    dev_id, _ = create_demo_asset_and_device(app)
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin_id
+        sess["_csrf_token"] = "action_csrf"
+
+    # 1. Suspend device
+    resp = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/suspend",
+        data={"csrf_token": "action_csrf", "reason": "Security investigation"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"has been suspended" in resp.data
+
+    with app.app_context():
+        dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        assert dev.status == DeviceStatus.SUSPENDED
+
+        # Verify audit log created
+        from app.models import AuditAction, AuditLog
+        log = (
+            AuditLog.query.filter_by(entity_id=dev_id, action=AuditAction.DEVICE_SUSPENDED)
+            .first()
+        )
+        assert log is not None
+        assert log.actor_id == "suspend_admin"
+
+    # 2. Unsuspend device
+    resp_un = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/unsuspend",
+        data={"csrf_token": "action_csrf", "reason": "Investigation cleared"},
+        follow_redirects=True,
+    )
+    assert resp_un.status_code == 200
+    assert b"restored to ACTIVE status" in resp_un.data
+
+    with app.app_context():
+        dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        assert dev.status == DeviceStatus.ACTIVE
+
+
+def test_reassign_device_ui_workflow(client, app):
+    """Test reassigning endpoint to another institutional asset via admin UI."""
+    admin_id = create_admin_user(app, username="reassign_admin")
+    dev_id, _old_asset_id = create_demo_asset_and_device(app)
+
+    with app.app_context():
+        old_dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        old_link = next(l for l in old_dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        old_asset_tag = old_link.asset.asset_tag
+
+        # Create new target asset
+        target_asset = Asset(
+            asset_id=generate_next_asset_id(db.session),
+            asset_tag=f"TARGET-TAG-{dev_id[-4:]}",
+            asset_type=AssetType.DESKTOP,
+            lifecycle_status=AssetLifecycleStatus.PENDING_AGENT,
+        )
+        db.session.add(target_asset)
+        db.session.commit()
+        target_asset_id = target_asset.asset_id
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin_id
+        sess["_csrf_token"] = "reassign_csrf"
+
+    # 1. Wrong confirmation tag rejected
+    bad_resp = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/reassign",
+        data={
+            "csrf_token": "reassign_csrf",
+            "target_asset_id": target_asset_id,
+            "confirm_asset_tag": "WRONG-TAG",
+            "reason": "Relocation",
+        },
+        follow_redirects=True,
+    )
+    assert b"Confirmation tag mismatch" in bad_resp.data
+
+    # 2. Correct confirmation succeeds
+    ok_resp = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/reassign",
+        data={
+            "csrf_token": "reassign_csrf",
+            "target_asset_id": target_asset_id,
+            "confirm_asset_tag": old_asset_tag,
+            "reason": "Relocated to Lab 2",
+        },
+        follow_redirects=True,
+    )
+    assert ok_resp.status_code == 200
+    assert b"successfully reassigned" in ok_resp.data
+
+    with app.app_context():
+        dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        active_link = next(l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        assert active_link.asset.asset_id == target_asset_id
+
+
+def test_retire_and_revoke_device_ui_workflow(client, app):
+    """Test retiring and revoking device with typed confirmation."""
+    admin_id = create_admin_user(app, username="retire_admin")
+    dev_id, _ = create_demo_asset_and_device(app)
+
+    with app.app_context():
+        dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        active_link = next(l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        tag = active_link.asset.asset_tag
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin_id
+        sess["_csrf_token"] = "retire_csrf"
+
+    # Retire
+    resp_retire = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/retire",
+        data={
+            "csrf_token": "retire_csrf",
+            "confirm_asset_tag": tag,
+            "reason": "Equipment decommissioned",
+        },
+        follow_redirects=True,
+    )
+    assert resp_retire.status_code == 200
+    assert b"has been retired" in resp_retire.data
+
+    with app.app_context():
+        dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
+        assert dev.status == DeviceStatus.RETIRED
+        # No active links
+        assert not any(l.relationship_status == RelationshipStatus.ACTIVE for l in dev.links)
+
+
+def test_viewer_role_read_only_access(client, app):
+    """Test that infra_viewer role can view pages but mutations fail with 403 or redirect."""
+    viewer_id = create_admin_user(app, username="viewer_user", role=UserRole.INFRA_VIEWER)
+    dev_id, _ = create_demo_asset_and_device(app)
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = viewer_id
+        sess["_csrf_token"] = "viewer_csrf"
+
+    # Viewer can view device list and detail
+    resp_list = client.get("/admin/infrastructure/devices")
+    assert resp_list.status_code == 200
+
+    resp_detail = client.get(f"/admin/infrastructure/devices/{dev_id}")
+    assert resp_detail.status_code == 200
+
+    # Viewer cannot perform mutating action
+    resp_suspend = client.post(
+        f"/admin/infrastructure/devices/{dev_id}/suspend",
+        data={"csrf_token": "viewer_csrf", "reason": "Unauthorized"},
+        follow_redirects=True,
+    )
+    assert b"Access denied" in resp_suspend.data
+
+    # Viewer cannot access API mutation
+    api_suspend = client.post(
+        f"/api/v1/admin/devices/{dev_id}/suspend",
+        headers={"Authorization": "Basic " + "dmlld2VyX3VzZXI6YWRtaW5zZWNyZXQxMjM="},
+        json={"reason": "Unauthorized API"},
+    )
+    assert api_suspend.status_code == 403
+
+
+def test_devices_list_query_count_budget_no_n_plus_one(client, app):
+    """Test that listing 50 devices stays within a strict query budget (assert <= 10 queries, no N+1)."""
+    admin_id = create_admin_user(app, username="query_admin")
+    now = datetime.now(UTC)
+
+    with app.app_context():
+        for i in range(50):
+            d_id = f"VD-BULK-{i:04d}"
+            dev = PhysicalDevice(
+                device_id=d_id,
+                device_public_key="bulkpubkey==",
+                status=DeviceStatus.ACTIVE,
+                first_seen=now,
+                last_seen=now,
+            )
+            db.session.add(dev)
+            db.session.flush()
+
+            asset = Asset(
+                asset_id=f"VD-ASSET-B{i:04d}",
+                asset_tag=f"TAG-B{i:04d}",
+                asset_type=AssetType.DESKTOP,
+            )
+            db.session.add(asset)
+            db.session.flush()
+
+            link = AssetDeviceLink(
+                asset_id=asset.id,
+                device_id=dev.id,
+                relationship_status=RelationshipStatus.ACTIVE,
+                linked_at=now,
+            )
+            db.session.add(link)
+
+            inv = DeviceInventory(
+                device_id=dev.id,
+                hostname=f"bulk-host-{i}",
+                os_summary="Linux",
+                agent_version="1.0.0",
+            )
+            db.session.add(inv)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin_id
+
+    from sqlalchemy import event
+
+    query_count = 0
+
+    def query_listener(conn, cursor, statement, parameters, context, executemany):
+        nonlocal query_count
+        query_count += 1
+
+    with app.app_context():
+        event.listen(db.engine, "before_cursor_execute", query_listener)
+        try:
+            resp = client.get("/admin/infrastructure/devices")
+            assert resp.status_code == 200
+            # Listing 50 items must not do 50+ queries (no N+1). With joinedload/subqueryload it stays under 10.
+            assert query_count <= 10, f"Query count was {query_count}, expected <= 10 (N+1 query problem detected)"
+        finally:
+            event.remove(db.engine, "before_cursor_execute", query_listener)

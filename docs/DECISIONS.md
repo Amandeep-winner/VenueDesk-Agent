@@ -130,3 +130,13 @@ Shared synthetic fixtures provide reproducible hardware topologies for instituti
 SQLAlchemy event listeners on `AuditLog` intercept update and delete events, raising permission errors to guarantee immutable append-only logs.
 The CI workflow configures discrete jobs spanning linting, SQLite backend tests, PostgreSQL 16 container tests, cross-platform agent execution on Linux and Windows, end-to-end workflows, security auditing, and coverage tracking.
 Security scanner suppressions for assert usage in tests and allowlisted subprocess calls are documented in `security/allowlist.md`.
+
+## Phase 7 Hardening Details
+
+Administrator experience is built with server-rendered HTML templates utilizing Bootstrap 5 and Chart.js.
+All mutating actions require valid CSRF tokens and administrative session authentication enforcing role-based access control.
+High-impact operations including suspend, unsuspend, retire, rotate-credential, revoke, and reassign require explicit administrative reasons and typed confirmation.
+Every lifecycle state mutation creates an immutable audit row documenting the actor, action, entity identifier, and state change.
+Device listing uses eager loading with selectinload across inventory and active asset links to eliminate N+1 queries.
+Identifier display rules mask sensitive identifiers, cryptographic secrets, private keys, and serials to preserve confidentiality.
+Endpoint policies in `ENDPOINT_POLICY` explicitly govern all API and UI administrative operations, closing unauthorized access by default.

@@ -29,6 +29,23 @@
             <i class="bi bi-shield-check me-1"></i>Verify Physical Device
         </a>
         {% endif %}
+        <div class="dropdown">
+            <button class="btn btn-dark btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-gear me-1"></i>Lifecycle Actions
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm small">
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#reassignModal"><i class="bi bi-arrow-left-right me-2 text-primary"></i>Reassign Asset</a></li>
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rotateKeyModal"><i class="bi bi-key me-2 text-warning"></i>Rotate Credentials</a></li>
+                {% if device.status.value != 'SUSPENDED' %}
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#suspendModal"><i class="bi bi-pause-circle me-2 text-warning"></i>Suspend Device</a></li>
+                {% else %}
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#unsuspendModal"><i class="bi bi-play-circle me-2 text-success"></i>Unsuspend Device</a></li>
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#retireModal"><i class="bi bi-archive me-2"></i>Retire Device</a></li>
+                <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#revokeModal"><i class="bi bi-x-circle me-2"></i>Revoke Device</a></li>
+            </ul>
+        </div>
         <a href="#jobs-section" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-terminal me-1"></i>Remote Jobs
         </a>
@@ -366,6 +383,223 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Audit Log Slice Table -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-journal-text me-2 text-primary"></i>Audit Trail Slice</span>
+        <a href="{{ url_for('admin_infra.audit_logs_view', q=device.device_id) }}" class="btn btn-sm btn-outline-secondary">View Full Audit</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+            <thead class="table-light">
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Actor</th>
+                    <th>Entity</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in audit_slice %}
+                <tr>
+                    <td class="text-muted">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') if log.timestamp else 'N/A' }}</td>
+                    <td><span class="badge bg-primary-subtle text-primary border">{{ log.action.value if hasattr(log.action, 'value') else log.action }}</span></td>
+                    <td class="fw-semibold">{{ log.actor_id }}</td>
+                    <td><span class="badge bg-light text-dark border">{{ log.entity_type }}: {{ log.entity_id }}</span></td>
+                    <td class="font-monospace text-muted small">
+                        {% if log.new_value %}{{ log.new_value | tojson }}{% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center py-3 text-muted">No audit entries recorded for this endpoint.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: Suspend Device -->
+<div class="modal fade" id="suspendModal" tabindex="-1" aria-labelledby="suspendModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.suspend_device_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="suspendModalLabel"><i class="bi bi-pause-circle me-2 text-warning"></i>Suspend Endpoint</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <p>Suspending this device will cause incoming check-ins and heartbeats to be rejected with <code>403 device_suspended</code>.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason for Suspension <span class="text-danger">*</span></label>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="e.g. Under investigation for relocation" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning btn-sm">Confirm Suspend</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Unsuspend Device -->
+<div class="modal fade" id="unsuspendModal" tabindex="-1" aria-labelledby="unsuspendModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.unsuspend_device_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="unsuspendModalLabel"><i class="bi bi-play-circle me-2 text-success"></i>Unsuspend Endpoint</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <p>Restore this endpoint to ACTIVE state, permitting standard heartbeats and job dispatch.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason for Restoration</label>
+                        <input type="text" name="reason" class="form-control form-control-sm" value="Investigation complete. Returned to service." required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success btn-sm">Confirm Unsuspend</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Rotate Credentials -->
+<div class="modal fade" id="rotateKeyModal" tabindex="-1" aria-labelledby="rotateKeyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.rotate_credential_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="rotateKeyModalLabel"><i class="bi bi-key me-2 text-warning"></i>Rotate Endpoint Credentials</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <p>Generating a new device-scoped enrollment token will initiate key rotation without creating duplicate physical devices.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason</label>
+                        <input type="text" name="reason" class="form-control form-control-sm" value="Scheduled key rotation" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning btn-sm">Generate Rotation Token</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Reassign Asset -->
+<div class="modal fade" id="reassignModal" tabindex="-1" aria-labelledby="reassignModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.reassign_device_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="reassignModalLabel"><i class="bi bi-arrow-left-right me-2 text-primary"></i>Reassign Endpoint to Asset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <p class="text-muted">Atomically close the current asset link and create an active link to the target asset.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Target Asset <span class="text-danger">*</span></label>
+                        <select name="target_asset_id" class="form-select form-select-sm" required>
+                            <option value="">Select available institutional asset...</option>
+                            {% for a in available_assets %}
+                                <option value="{{ a.asset_id }}">{{ a.asset_id }} ({{ a.asset_tag or 'No Tag' }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason for Reassignment <span class="text-danger">*</span></label>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="e.g. PC relocated to new workstation" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Confirm Current Tag: <code class="text-dark">{{ active_link.asset.asset_tag if (active_link and active_link.asset) else device.device_id }}</code> <span class="text-danger">*</span></label>
+                        <input type="text" name="confirm_asset_tag" class="form-control form-control-sm" placeholder="Type current asset tag to confirm" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Confirm Reassignment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Retire Device -->
+<div class="modal fade" id="retireModal" tabindex="-1" aria-labelledby="retireModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.retire_device_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-danger" id="retireModalLabel"><i class="bi bi-archive me-2"></i>Retire Physical Endpoint</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <div class="alert alert-danger small mb-3">
+                        <strong>Warning:</strong> Retiring an endpoint sets its status to RETIRED and closes any active asset link.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason for Retirement <span class="text-danger">*</span></label>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="e.g. End of hardware lifecycle" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Confirm Asset Tag: <code class="text-dark">{{ active_link.asset.asset_tag if (active_link and active_link.asset) else device.device_id }}</code> <span class="text-danger">*</span></label>
+                        <input type="text" name="confirm_asset_tag" class="form-control form-control-sm" placeholder="Type asset tag to confirm" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Permanently Retire</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Revoke Device -->
+<div class="modal fade" id="revokeModal" tabindex="-1" aria-labelledby="revokeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_infra.revoke_device_view', device_id=device.device_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-danger" id="revokeModalLabel"><i class="bi bi-x-circle me-2"></i>Revoke Device & Credentials</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body small">
+                    <div class="alert alert-danger small mb-3">
+                        <strong>Security Warning:</strong> Revoking will permanently invalidate all device credentials and mark endpoint REVOKED.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reason for Revocation <span class="text-danger">*</span></label>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="e.g. Suspected compromise / lost machine" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Confirm Asset Tag: <code class="text-dark">{{ active_link.asset.asset_tag if (active_link and active_link.asset) else device.device_id }}</code> <span class="text-danger">*</span></label>
+                        <input type="text" name="confirm_asset_tag" class="form-control form-control-sm" placeholder="Type asset tag to confirm" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Permanently Revoke</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
