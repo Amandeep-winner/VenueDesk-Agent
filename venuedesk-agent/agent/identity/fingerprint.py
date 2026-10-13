@@ -18,6 +18,7 @@ PLACEHOLDERS: set[str] = {
     "0",
     "system serial number",
     "chassis serial number",
+    "null",
 }
 
 VIRTUAL_NIC_PATTERNS = [
@@ -78,13 +79,37 @@ def norm_list(items: list[Any] | None) -> list[str]:
     return sorted({n for n in (norm(x) for x in items) if n is not None})
 
 
-def compute_fingerprint(ev: dict[str, Any], version: int = FINGERPRINT_VERSION) -> str:
-    """Compute deterministic SHA-256 fingerprint from canonical hardware evidence."""
+from enum import Enum
+
+
+class FieldMatchResult(str, Enum):
+    """Tri-state result for hardware field comparison."""
+    MATCH = "MATCH"
+    MISMATCH = "MISMATCH"
+    UNKNOWN = "UNKNOWN"
+
+
+def compare_field(val_a: Any, val_b: Any) -> FieldMatchResult:
+    """Compare two hardware values. None == None is never evidence of sameness."""
+    norm_a = norm(val_a)
+    norm_b = norm(val_b)
+    if norm_a is None or norm_b is None:
+        return FieldMatchResult.UNKNOWN
+    if norm_a == norm_b:
+        return FieldMatchResult.MATCH
+    return FieldMatchResult.MISMATCH
+
+
+def _fingerprint_v1(ev: dict[str, Any]) -> str:
+    """Fingerprint algorithm version 1 (released).
+
+    Never edit this released behavior. New versions must be implemented as _fingerprint_v2, etc.
+    """
     raw_nics = ev.get("nics", [])
     filtered_nics = filter_nics(raw_nics) if isinstance(raw_nics, list) else []
 
     canon = {
-        "v": version,
+        "v": 1,
         "machine_uuid": norm(ev.get("machine_uuid")),
         "bios_serial": norm(ev.get("bios_serial")),
         "motherboard_serial": norm(ev.get("motherboard_serial")),
@@ -95,6 +120,17 @@ def compute_fingerprint(ev: dict[str, Any], version: int = FINGERPRINT_VERSION) 
     }
     encoded = json.dumps(canon, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def fingerprint(ev: dict[str, Any], version: int = FINGERPRINT_VERSION) -> str:
+    """Compute deterministic SHA-256 fingerprint from canonical hardware evidence by version."""
+    if version == 1:
+        return _fingerprint_v1(ev)
+    raise ValueError(f"Unsupported fingerprint version: {version}")
+
+
+# Alias for backward compatibility
+compute_fingerprint = fingerprint
 
 
 def field_hash(salt: bytes, value: Any) -> str | None:

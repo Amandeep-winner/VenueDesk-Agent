@@ -97,6 +97,7 @@ class DeviceEventType(str, Enum):
     DEVICE_MOVED = "DEVICE_MOVED"
     OS_REINSTALL_DETECTED = "OS_REINSTALL_DETECTED"
     UNCLAIMED_DEVICE_DISCOVERED = "UNCLAIMED_DEVICE_DISCOVERED"
+    FINGERPRINT_MIGRATED = "FINGERPRINT_MIGRATED"
 
 
 class JobType(str, Enum):
@@ -150,3 +151,17 @@ class VerificationMethod(str, Enum):
 class UserRole(str, Enum):
     INFRA_ADMIN = "infra_admin"
     INFRA_VIEWER = "infra_viewer"
+
+
+class EvidenceSource(str, Enum):
+    AGENT_INVENTORY = "AGENT_INVENTORY"
+    AGENT_IDENTITY = "AGENT_IDENTITY"
+    ADMIN = "ADMIN"
+    RECOVERY = "RECOVERY"
+
+
+class FieldMatchResult(str, Enum):
+    MATCH = "MATCH"
+    MISMATCH = "MISMATCH"
+    UNKNOWN = "UNKNOWN"
+

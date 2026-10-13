@@ -21,6 +21,7 @@ from app.extensions import db
 from app.models.enums import (
     DeviceStatus,
     EndpointType,
+    EvidenceSource,
     OsFamily,
     OsInstallationStatus,
     RelationshipStatus,
@@ -248,4 +249,25 @@ class DeviceRecoveryRequest(db.Model):
     resolved_by = Column(String(128), nullable=True)
 
     device = db.relationship("PhysicalDevice")
+
+
+class HardwareChangeRecord(db.Model):
+    """Historical audit trail of hardware and inventory changes."""
+    __tablename__ = "hardware_change_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    field = Column(String(64), nullable=False)
+    previous_value = Column(Text, nullable=True)  # hashed or redacted
+    new_value = Column(Text, nullable=True)       # hashed or redacted
+    evidence_source = Column(SQLEnum(EvidenceSource, native_enum=False), nullable=False)
+    reconciliation_decision = Column(String(64), nullable=False)
+    requires_approval = Column(Boolean, nullable=False, default=False)
+    approved_by = Column(String(128), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    audit_log_id = Column(Integer, ForeignKey("audit_logs.id", ondelete="SET NULL"), nullable=True)
+
+    device = db.relationship("PhysicalDevice", backref=db.backref("hardware_changes", lazy="dynamic", cascade="all, delete-orphan"))
+    audit_log = db.relationship("AuditLog")
 

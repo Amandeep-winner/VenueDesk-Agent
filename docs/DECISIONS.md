@@ -85,4 +85,13 @@ Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and o
 | 2026-10-14 | Phase 0 | Established baseline with 133 passing tests across backend, agent, and e2e suites. | Operating rule 3 requires verifying baseline reproducibility before introducing identity refactoring. |
 | 2026-10-14 | Phase 1 | Rewrote device pairing into canonical `pair_device` service function, added partial unique indexes `uq_active_link_per_asset` and `uq_active_link_per_device`, and created duplicate link cleanup runbook. Initial tests reproduced that the legacy code lacked row locks, lacked active device link checks, permitted concurrent duplicate links under race conditions, and constructed links outside a unified module. | Phase 1 requirements mandate single active link database constraints, atomic reassignment, and centralized link creation to prevent asset-device corruption. |
 | 2026-10-14 | Phase 2 | Hardened authentication pipeline with 7-step cryptographic verification order, atomic single-statement nonce insertion and token consumption, centralized `@enforce_policy` decorator with complete endpoint policy registry, `RedactingFilter` for logs, and fail-closed security for all `/api/` routes. | Eliminates check-then-insert race conditions in replay defense, prevents information leakage by returning uniform 401 and 400 responses, and guarantees endpoint access invariants across all device lifecycle states. |
+| 2026-10-14 | Phase 3 | Pinned fingerprint v1 algorithm and golden vector, enforced tri-state field comparison (None == None is UNKNOWN), established HardwareChangeRecord append-only audit trail, and implemented granular hardware change classification. | Eliminates false matches on empty or degraded evidence fields, preserves forensic hardware history across updates, and prevents automatic re-pairing without administrative authorization. |
 
+## Phase 3 Hardening Details
+
+Pinned fingerprint version 1 algorithm with golden test vectors to guarantee cross-version hash consistency.
+Missing evidence fields (`None == None`) strictly evaluate to tri-state `UNKNOWN` rather than `MATCH`.
+`UNKNOWN` fields contribute 0 to the similarity score numerator and are excluded from the denominator.
+Established `hardware_change_records` append-only audit table tracking every field deviation and authorization requirement.
+Granular classification categorizes changes into low severity (RAM, GPU, hostname, IP), medium severity (disk), and high severity (motherboard, TPM, multi-anchor conflicts).
+Credential rotation preserves physical device records and active asset links while incrementing credential versions.
