@@ -77,3 +77,10 @@ The suite drives an in-process Flask server with authentic Ed25519 cryptographic
 Stages cover asset provisioning, single-use token generation, agent enrollment, physical verification sign-off, heartbeats and telemetry, benign hardware drift, OS reinstall recovery, dual-boot secondary OS discovery, motherboard replacement, clone detection, and revocation.
 Enhanced the fake endpoint simulation tool `tools/fake_endpoint.py` with multi-stage lifecycle simulation and telemetry streaming.
 Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and operational metrics.
+
+## Identity Hardening & Production Readiness Decisions
+
+| Date | Phase | Decision | Reason |
+| --- | --- | --- | --- |
+| 2026-10-14 | Phase 0 | Established baseline with 133 passing tests across backend, agent, and e2e suites. | Operating rule 3 requires verifying baseline reproducibility before introducing identity refactoring. |
+

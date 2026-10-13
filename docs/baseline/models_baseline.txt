@@ -1,0 +1,281 @@
+# Database Models and Schema Dump (16 tables)
+
+## Table: `asset_device_links`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `asset_id`: INTEGER NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `relationship_status`: VARCHAR(6) NOT NULL
+  - `linked_at`: DATETIME NOT NULL
+  - `unlinked_at`: DATETIME NULL
+  - `linked_by`: VARCHAR(128) NOT NULL
+  - `reason`: TEXT NULL
+  - `verification_id`: INTEGER NULL
+### Foreign Keys:
+  - `['asset_id']` -> `assets.['id']`
+  - `['device_id']` -> `physical_devices.['id']`
+  - `['verification_id']` -> `verifications.['id']`
+### Indexes:
+  - `ix_asset_device_links_asset_id`: ['asset_id']
+  - `ix_asset_device_links_device_id`: ['device_id']
+
+## Table: `asset_sequences`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `next_val`: INTEGER NOT NULL
+
+## Table: `assets`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `asset_id`: VARCHAR(32) NOT NULL
+  - `asset_tag`: VARCHAR(64) NULL
+  - `asset_type`: VARCHAR(7) NOT NULL
+  - `department_id`: VARCHAR(64) NULL
+  - `building_id`: VARCHAR(64) NULL
+  - `room_id`: VARCHAR(64) NULL
+  - `location_label`: VARCHAR(128) NULL
+  - `position_label`: VARCHAR(64) NULL
+  - `assigned_to`: VARCHAR(128) NULL
+  - `purchase_date`: DATETIME NULL
+  - `warranty_end`: DATETIME NULL
+  - `lifecycle_status`: VARCHAR(20) NOT NULL
+  - `verification_status`: VARCHAR(23) NOT NULL
+  - `notes`: TEXT NULL
+  - `created_at`: DATETIME NOT NULL
+  - `updated_at`: DATETIME NOT NULL
+### Indexes:
+  - `ix_assets_asset_id`: ['asset_id'] (UNIQUE)
+  - `ix_assets_asset_tag`: ['asset_tag'] (UNIQUE)
+
+## Table: `audit_logs`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `actor_id`: VARCHAR(128) NOT NULL
+  - `actor_type`: VARCHAR(6) NOT NULL
+  - `action`: VARCHAR(24) NOT NULL
+  - `entity_type`: VARCHAR(64) NOT NULL
+  - `entity_id`: VARCHAR(128) NOT NULL
+  - `old_value`: JSON NULL
+  - `new_value`: JSON NULL
+  - `timestamp`: DATETIME NOT NULL
+  - `ip_address`: VARCHAR(64) NULL
+  - `metadata_json`: JSON NULL
+### Indexes:
+  - `ix_audit_logs_action`: ['action']
+  - `ix_audit_logs_entity_id`: ['entity_id']
+  - `ix_audit_logs_timestamp`: ['timestamp']
+
+## Table: `device_events`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `event_type`: VARCHAR(27) NOT NULL
+  - `severity`: VARCHAR(8) NOT NULL
+  - `payload`: JSON NOT NULL
+  - `occurred_at`: DATETIME NOT NULL
+  - `created_at`: DATETIME NOT NULL
+  - `acknowledged_by`: VARCHAR(128) NULL
+  - `acknowledged_at`: DATETIME NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_device_events_device_id`: ['device_id']
+  - `ix_device_events_event_type`: ['event_type']
+
+## Table: `device_identity_evidence`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `machine_uuid_hash`: VARCHAR(64) NULL
+  - `bios_serial_hash`: VARCHAR(64) NULL
+  - `motherboard_serial_hash`: VARCHAR(64) NULL
+  - `cpu_signature`: VARCHAR(128) NULL
+  - `gpu_signature`: VARCHAR(256) NULL
+  - `disk_identity_hash`: VARCHAR(64) NULL
+  - `network_identity_hash`: VARCHAR(64) NULL
+  - `tpm_identity`: VARCHAR(64) NULL
+  - `fingerprint`: VARCHAR(64) NOT NULL
+  - `fingerprint_version`: INTEGER NOT NULL
+  - `captured_at`: DATETIME NOT NULL
+  - `evidence_version`: INTEGER NOT NULL
+  - `trusted`: BOOLEAN NOT NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_device_identity_evidence_device_id`: ['device_id']
+  - `ix_device_identity_evidence_fingerprint`: ['fingerprint']
+
+## Table: `device_inventory`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `hostname`: VARCHAR(256) NOT NULL
+  - `ip_addresses`: JSON NOT NULL
+  - `mac_addresses`: JSON NOT NULL
+  - `cpu_model`: VARCHAR(128) NULL
+  - `cpu_cores`: INTEGER NULL
+  - `ram_total_mb`: INTEGER NULL
+  - `gpus`: JSON NULL
+  - `disks`: JSON NULL
+  - `os_summary`: VARCHAR(256) NULL
+  - `bios_version`: VARCHAR(128) NULL
+  - `tpm_present`: BOOLEAN NOT NULL
+  - `agent_version`: VARCHAR(32) NOT NULL
+  - `updated_at`: DATETIME NOT NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_device_inventory_device_id`: ['device_id'] (UNIQUE)
+
+## Table: `device_jobs`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `job_type`: VARCHAR(24) NOT NULL
+  - `payload`: JSON NOT NULL
+  - `status`: VARCHAR(10) NOT NULL
+  - `created_by`: VARCHAR(128) NOT NULL
+  - `created_at`: DATETIME NOT NULL
+  - `started_at`: DATETIME NULL
+  - `completed_at`: DATETIME NULL
+  - `expires_at`: DATETIME NOT NULL
+  - `result`: JSON NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_device_jobs_device_id`: ['device_id']
+  - `ix_device_jobs_status`: ['status']
+
+## Table: `device_recovery_requests`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `new_public_key`: TEXT NOT NULL
+  - `new_agent_instance_id`: VARCHAR(64) NOT NULL
+  - `new_os_info`: JSON NULL
+  - `new_inventory`: JSON NULL
+  - `new_evidence`: JSON NULL
+  - `status`: VARCHAR(32) NOT NULL
+  - `created_at`: DATETIME NOT NULL
+  - `resolved_at`: DATETIME NULL
+  - `resolved_by`: VARCHAR(128) NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_device_recovery_requests_device_id`: ['device_id']
+
+## Table: `enrollment_tokens`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `asset_id`: INTEGER NOT NULL
+  - `token_hash`: VARCHAR(64) NOT NULL
+  - `expires_at`: DATETIME NOT NULL
+  - `used_at`: DATETIME NULL
+  - `used_by_device_id`: INTEGER NULL
+  - `created_by`: VARCHAR(128) NOT NULL
+  - `revoked_at`: DATETIME NULL
+  - `status`: VARCHAR(7) NOT NULL
+### Foreign Keys:
+  - `['asset_id']` -> `assets.['id']`
+  - `['used_by_device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_enrollment_tokens_asset_id`: ['asset_id']
+  - `ix_enrollment_tokens_token_hash`: ['token_hash'] (UNIQUE)
+
+## Table: `os_installations`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `os_family`: VARCHAR(7) NOT NULL
+  - `os_name`: VARCHAR(128) NOT NULL
+  - `os_version`: VARCHAR(64) NOT NULL
+  - `architecture`: VARCHAR(32) NOT NULL
+  - `os_machine_id_hash`: VARCHAR(64) NOT NULL
+  - `agent_instance_id`: VARCHAR(64) NOT NULL
+  - `first_seen`: DATETIME NOT NULL
+  - `last_seen`: DATETIME NOT NULL
+  - `status`: VARCHAR(10) NOT NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Unique Constraints:
+  - `uq_device_os_installation`: ['device_id', 'os_family', 'os_machine_id_hash']
+### Indexes:
+  - `ix_os_installations_device_id`: ['device_id']
+
+## Table: `physical_devices`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: VARCHAR(32) NOT NULL
+  - `device_public_key`: TEXT NOT NULL
+  - `device_certificate`: TEXT NULL
+  - `credential_version`: INTEGER NOT NULL
+  - `status`: VARCHAR(22) NOT NULL
+  - `endpoint_type`: VARCHAR(8) NOT NULL
+  - `first_seen`: DATETIME NULL
+  - `last_seen`: DATETIME NULL
+  - `last_verified_at`: DATETIME NULL
+  - `created_at`: DATETIME NOT NULL
+  - `updated_at`: DATETIME NOT NULL
+### Indexes:
+  - `ix_physical_devices_device_id`: ['device_id'] (UNIQUE)
+
+## Table: `request_nonces`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: VARCHAR(32) NOT NULL
+  - `nonce`: VARCHAR(64) NOT NULL
+  - `expires_at`: DATETIME NOT NULL
+### Unique Constraints:
+  - `uq_device_nonce`: ['device_id', 'nonce']
+### Indexes:
+  - `ix_request_nonces_device_id`: ['device_id']
+  - `ix_request_nonces_expires_at`: ['expires_at']
+
+## Table: `telemetry`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `timestamp`: DATETIME NOT NULL
+  - `cpu_percent`: FLOAT NOT NULL
+  - `memory_percent`: FLOAT NOT NULL
+  - `disk_percent`: FLOAT NOT NULL
+  - `network_rx`: BIGINT NOT NULL
+  - `network_tx`: BIGINT NOT NULL
+  - `uptime`: FLOAT NOT NULL
+  - `load_average`: FLOAT NULL
+  - `gpu_percent`: FLOAT NULL
+  - `gpu_mem_percent`: FLOAT NULL
+  - `temperature_c`: FLOAT NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `idx_telemetry_device_timestamp`: ['device_id', 'timestamp']
+  - `ix_telemetry_device_id`: ['device_id']
+  - `ix_telemetry_timestamp`: ['timestamp']
+
+## Table: `users`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `username`: VARCHAR(64) NOT NULL
+  - `password_hash`: VARCHAR(256) NOT NULL
+  - `role`: VARCHAR(12) NOT NULL
+  - `created_at`: DATETIME NOT NULL
+### Indexes:
+  - `ix_users_username`: ['username'] (UNIQUE)
+
+## Table: `verifications`
+### Columns:
+  - `id`: INTEGER [PK] NOT NULL
+  - `device_id`: INTEGER NOT NULL
+  - `verified_by`: VARCHAR(128) NOT NULL
+  - `verification_method`: VARCHAR(18) NOT NULL
+  - `observed_asset_tag`: VARCHAR(64) NULL
+  - `observed_serial`: VARCHAR(128) NULL
+  - `observed_location`: VARCHAR(128) NULL
+  - `notes`: TEXT NULL
+  - `verified_at`: DATETIME NOT NULL
+### Foreign Keys:
+  - `['device_id']` -> `physical_devices.['id']`
+### Indexes:
+  - `ix_verifications_device_id`: ['device_id']
+
