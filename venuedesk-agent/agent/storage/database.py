@@ -1,4 +1,5 @@
 """Agent local SQLite database for state management and continuity."""
+
 import sqlite3
 import uuid
 from pathlib import Path

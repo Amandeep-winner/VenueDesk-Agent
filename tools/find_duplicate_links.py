@@ -1,8 +1,11 @@
 """Tool to find duplicate ACTIVE asset-device links before running migrations."""
+
 import os
 import sys
 
-backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venuedesk-backend")
+backend_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venuedesk-backend"
+)
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
@@ -51,7 +54,9 @@ def find_duplicate_links():
             print("OK: No duplicate ACTIVE links found in asset_device_links.")
             return 0
         else:
-            print("\nPlease resolve duplicate links per docs/RUNBOOK.md before applying migration.")
+            print(
+                "\nPlease resolve duplicate links per docs/RUNBOOK.md before applying migration."
+            )
             return 1
 
 

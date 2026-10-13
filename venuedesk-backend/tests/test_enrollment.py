@@ -1,4 +1,5 @@
 """Integration and unit tests for agent enrollment and pairing token lifecycle."""
+
 import base64
 import hashlib
 import time

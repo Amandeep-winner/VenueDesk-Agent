@@ -1,4 +1,5 @@
 """Synthetic test fixtures and hardware definitions for comprehensive test suites."""
+
 import base64
 from dataclasses import dataclass
 from typing import Any

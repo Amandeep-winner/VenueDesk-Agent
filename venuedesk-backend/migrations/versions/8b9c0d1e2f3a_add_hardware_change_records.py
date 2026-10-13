@@ -4,6 +4,7 @@ Revision ID: 8b9c0d1e2f3a
 Revises: 7a8c9e0d1f2a
 Create Date: 2026-10-14 02:40:00.000000
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -33,7 +34,12 @@ def upgrade():
         sa.ForeignKeyConstraint(["audit_log_id"], ["audit_logs.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_hardware_change_records_device_id", "hardware_change_records", ["device_id"], unique=False)
+    op.create_index(
+        "ix_hardware_change_records_device_id",
+        "hardware_change_records",
+        ["device_id"],
+        unique=False,
+    )
 
 
 def downgrade():

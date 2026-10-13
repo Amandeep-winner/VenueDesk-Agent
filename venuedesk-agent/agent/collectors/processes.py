@@ -1,4 +1,5 @@
 """Process list collector with graceful degradation."""
+
 import logging
 from typing import Any
 
@@ -17,16 +18,20 @@ def collect_processes(limit: int = 100) -> list[dict[str, Any]]:
         return processes
 
     try:
-        for proc in psutil.process_iter(["pid", "name", "username", "cpu_percent", "memory_percent"]):
+        for proc in psutil.process_iter(
+            ["pid", "name", "username", "cpu_percent", "memory_percent"]
+        ):
             try:
                 info = proc.info
-                processes.append({
-                    "pid": info.get("pid"),
-                    "name": info.get("name") or "unknown",
-                    "username": info.get("username"),
-                    "cpu_percent": info.get("cpu_percent") or 0.0,
-                    "memory_percent": info.get("memory_percent") or 0.0,
-                })
+                processes.append(
+                    {
+                        "pid": info.get("pid"),
+                        "name": info.get("name") or "unknown",
+                        "username": info.get("username"),
+                        "cpu_percent": info.get("cpu_percent") or 0.0,
+                        "memory_percent": info.get("memory_percent") or 0.0,
+                    }
+                )
                 if len(processes) >= limit:
                     break
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):

@@ -1,4 +1,5 @@
 """Pairing token generation, hashing, and atomic consumption."""
+
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -17,12 +18,13 @@ def hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.strip().encode("utf-8")).hexdigest()
 
 
-def create_token_for_asset(asset_id: int, created_by: str = "admin", ttl_hours: int = 24) -> tuple[str, EnrollmentToken]:
+def create_token_for_asset(
+    asset_id: int, created_by: str = "admin", ttl_hours: int = 24
+) -> tuple[str, EnrollmentToken]:
     """Generate and store pairing token for an asset, revoking prior active tokens."""
     # Revoke any prior active tokens for this asset
     prior_tokens = EnrollmentToken.query.filter_by(
-        asset_id=asset_id,
-        status=EnrollmentTokenStatus.ACTIVE
+        asset_id=asset_id, status=EnrollmentTokenStatus.ACTIVE
     ).all()
     for tok in prior_tokens:
         tok.status = EnrollmentTokenStatus.REVOKED
@@ -34,7 +36,7 @@ def create_token_for_asset(asset_id: int, created_by: str = "admin", ttl_hours: 
         token_hash=hash_token(raw_token),
         expires_at=datetime.now(UTC) + timedelta(hours=ttl_hours),
         created_by=created_by,
-        status=EnrollmentTokenStatus.ACTIVE
+        status=EnrollmentTokenStatus.ACTIVE,
     )
     db.session.add(token_obj)
     db.session.flush()
@@ -49,6 +51,7 @@ def create_token_for_device(
 ) -> tuple[str, EnrollmentToken]:
     """Generate and store device-scoped OS enrollment token, revoking prior active device tokens."""
     from app.models.enums import TokenScope
+
     prior_tokens = EnrollmentToken.query.filter_by(
         device_id=device_id,
         scope=TokenScope.DEVICE,

@@ -1,4 +1,5 @@
 """Tests verifying immutable append-only audit log guards and state action auditing."""
+
 import base64
 from datetime import UTC, datetime
 
@@ -47,7 +48,9 @@ def test_audit_log_update_raises_guard(app):
 
         # Attempting to modify audit record must fail
         log.entity_id = "VD-DEVICE-MODIFIED"
-        with pytest.raises(PermissionError, match="strictly append-only and cannot be updated"):
+        with pytest.raises(
+            PermissionError, match="strictly append-only and cannot be updated"
+        ):
             db.session.commit()
         db.session.rollback()
 
@@ -68,7 +71,9 @@ def test_audit_log_delete_raises_guard(app):
 
         # Attempting to delete audit record must fail
         db.session.delete(log)
-        with pytest.raises(PermissionError, match="strictly append-only and cannot be deleted"):
+        with pytest.raises(
+            PermissionError, match="strictly append-only and cannot be deleted"
+        ):
             db.session.commit()
         db.session.rollback()
 

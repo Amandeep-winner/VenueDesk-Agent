@@ -35,8 +35,15 @@ def output_identity(config: AgentConfig) -> None:
 
 
 @click.group(invoke_without_command=True)
-@click.option("--config", "-c", "config_file", type=click.Path(exists=True), help="Path to config.toml")
-@click.option("--print-identity", "flag_print_identity", is_flag=True, help="Print identity evidence JSON and exit")
+@click.option(
+    "--config", "-c", "config_file", type=click.Path(exists=True), help="Path to config.toml"
+)
+@click.option(
+    "--print-identity",
+    "flag_print_identity",
+    is_flag=True,
+    help="Print identity evidence JSON and exit",
+)
 @click.pass_context
 def cli(ctx: click.Context, config_file: str | None, flag_print_identity: bool) -> None:
     """VenueDesk Endpoint Agent CLI."""
@@ -71,11 +78,16 @@ def run(ctx: click.Context) -> None:
     id_store = IdentityStore(db)
     keystore = get_keystore(config)
 
-    if (not id_store.is_enrolled() or not keystore.has_key()) and config.server_url and not config.pairing_token:
+    if (
+        (not id_store.is_enrolled() or not keystore.has_key())
+        and config.server_url
+        and not config.pairing_token
+    ):
         logger.info("Agent state or key missing. Entering awaiting recovery mode...")
         click.echo("Awaiting administrator recovery approval...")
         try:
             from agent.communication.recovery import recover_agent
+
             result = recover_agent(config, wait_for_approval=True, poll_timeout_seconds=300)
             click.echo(f"Recovery approved! Enrolled device: {result.get('device_id')}")
         except (RuntimeError, ValueError, TimeoutError, OSError) as exc:
@@ -86,15 +98,23 @@ def run(ctx: click.Context) -> None:
 @cli.command()
 @click.option("--server", "-s", default=None, help="Control plane server URL")
 @click.option("--token", "-t", default=None, help="One-time pairing token (PAIR-...)")
-@click.option("--force-reenroll", is_flag=True, default=False, help="Force new enrollment even if already enrolled")
+@click.option(
+    "--force-reenroll",
+    is_flag=True,
+    default=False,
+    help="Force new enrollment even if already enrolled",
+)
 @click.pass_context
 def enroll(ctx: click.Context, server: str | None, token: str | None, force_reenroll: bool) -> None:
     """Enroll this endpoint with the VenueDesk control plane."""
     config: AgentConfig = ctx.obj["config"]
     try:
         from agent.communication.enrollment import enroll_agent
+
         result = enroll_agent(config, token=token, force_reenroll=force_reenroll, server_url=server)
-        click.echo(f"Successfully enrolled device: {result['device_id']} (Status: {result['status']})")
+        click.echo(
+            f"Successfully enrolled device: {result['device_id']} (Status: {result['status']})"
+        )
     except (RuntimeError, ValueError, OSError) as exc:
         click.echo(f"Enrollment error: {exc}", err=True)
         ctx.exit(1)
@@ -103,8 +123,40 @@ def enroll(ctx: click.Context, server: str | None, token: str | None, force_reen
 @cli.command()
 @click.pass_context
 def status(ctx: click.Context) -> None:
-    """Display current local agent status and enrollment."""
-    click.echo("Agent Status: initialized (pending enrollment).")
+    """Display current local agent health and enrollment status."""
+    config: AgentConfig = ctx.obj["config"]
+    db_path = Path(config.state_dir) / "agent_state.db"
+    db = AgentDatabase(db_path)
+    id_store = IdentityStore(db)
+
+    outbox_depth = 0
+    dropped_count = 0
+    try:
+        from agent.storage.outbox import Outbox
+
+        outbox_file = Path(config.state_dir) / "outbox.db"
+        if outbox_file.exists():
+            outbox = Outbox(outbox_file)
+            outbox_depth = outbox.count()
+            dropped_count = getattr(outbox, "dropped_events_count", 0)
+    except (OSError, RuntimeError) as exc:
+        logger.debug("Could not inspect outbox health metrics: %s", exc)
+
+    enrolled = id_store.is_enrolled()
+    dev_id = id_store.device_id or "NONE (unclaimed/not enrolled)"
+    last_err = db.get_state("last_error_code") or "none"
+    last_hb = db.get_state("last_heartbeat") or "never"
+
+    click.echo("=== VenueDesk Agent Health Status ===")
+    click.echo(f"Agent Version:     {config.agent_version}")
+    click.echo(f"Enrolled:          {'YES' if enrolled else 'NO'}")
+    click.echo(f"Device ID:         {dev_id}")
+    click.echo(f"OS Installation:   {id_store.os_installation_id or 'unknown'}")
+    click.echo(f"Server URL:        {config.server_url}")
+    click.echo(f"Queue Depth:       {outbox_depth} items")
+    click.echo(f"Dropped Events:    {dropped_count}")
+    click.echo(f"Last Error Code:   {last_err}")
+    click.echo(f"Last Heartbeat:    {last_hb}")
 
 
 @cli.command("print-identity")
@@ -117,7 +169,9 @@ def print_identity_cmd(ctx: click.Context) -> None:
 
 @cli.command()
 @click.option("--server", "-s", default=None, help="Control plane server URL")
-@click.option("--wait", is_flag=True, default=False, help="Wait and poll for administrator approval")
+@click.option(
+    "--wait", is_flag=True, default=False, help="Wait and poll for administrator approval"
+)
 @click.option("--timeout", default=60, help="Polling timeout in seconds")
 @click.pass_context
 def recover(ctx: click.Context, server: str | None, wait: bool, timeout: int) -> None:
@@ -125,13 +179,16 @@ def recover(ctx: click.Context, server: str | None, wait: bool, timeout: int) ->
     config: AgentConfig = ctx.obj["config"]
     try:
         from agent.communication.recovery import recover_agent
+
         result = recover_agent(
             config,
             server_url=server,
             wait_for_approval=wait,
             poll_timeout_seconds=timeout,
         )
-        click.echo(f"Recovery request status: {result['status']} (Device ID: {result.get('device_id')})")
+        click.echo(
+            f"Recovery request status: {result['status']} (Device ID: {result.get('device_id')})"
+        )
     except (RuntimeError, ValueError, TimeoutError, OSError) as exc:
         click.echo(f"Recovery error: {exc}", err=True)
         ctx.exit(1)
@@ -144,6 +201,7 @@ def rotate_credential_cmd(ctx: click.Context) -> None:
     config: AgentConfig = ctx.obj["config"]
     try:
         from agent.communication.client import AuthenticatedClient
+
         client = AuthenticatedClient(config)
         res = client.rotate_credential()
         click.echo(f"Successfully rotated credential to version {res.get('credential_version')}.")

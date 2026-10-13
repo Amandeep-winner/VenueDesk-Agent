@@ -1,4 +1,5 @@
 """Comprehensive unit tests for hardened agent outbox and retry behavior."""
+
 import subprocess
 import sys
 import time
@@ -50,7 +51,10 @@ def test_in_flight_reverted_after_crash(tmp_path):
         assert cur.fetchone()["status"] == STATUS_IN_FLIGHT
 
         # Artificially age the in-flight row beyond 60s
-        conn.execute("UPDATE outbox SET created_at = ?, next_attempt_at = ? WHERE id = 1", (time.time() - 100, time.time() - 100))
+        conn.execute(
+            "UPDATE outbox SET created_at = ?, next_attempt_at = ? WHERE id = 1",
+            (time.time() - 100, time.time() - 100),
+        )
         conn.commit()
 
     # Reinitialize outbox simulating process crash restart
@@ -231,7 +235,9 @@ box = Outbox(r"{db_file}")
 box.enqueue(PRIORITY_IDENTITY_EVENT, "identity", {{"event": "sub_p0"}})
 box.enqueue(PRIORITY_INVENTORY, "inventory", {{"host": "sub_p1"}})
 """
-    res = subprocess.run([sys.executable, "-c", script], check=False, capture_output=True, text=True)
+    res = subprocess.run(
+        [sys.executable, "-c", script], check=False, capture_output=True, text=True
+    )
     assert res.returncode == 0
 
     # Re-open in parent process

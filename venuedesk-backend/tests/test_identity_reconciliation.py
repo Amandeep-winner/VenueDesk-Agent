@@ -1,4 +1,5 @@
 """Specification acceptance tests (§66) and identity reconciliation test suite."""
+
 import base64
 import hashlib
 import json
@@ -41,7 +42,9 @@ from app.services.identity_service import (
 )
 
 
-def create_asset_and_device(app, hostname="workstation-01", mb_serial="MB-ORIG-1234", uuid_str="UUID-ORIG-5678"):
+def create_asset_and_device(
+    app, hostname="workstation-01", mb_serial="MB-ORIG-1234", uuid_str="UUID-ORIG-5678"
+):
     """Helper creating an institutional asset, physical device, active link, and trusted evidence."""
     key = Ed25519PrivateKey.generate()
     pub_raw = key.public_key().public_bytes(
@@ -136,7 +139,9 @@ def create_asset_and_device(app, hostname="workstation-01", mb_serial="MB-ORIG-1
     return d_id, a_id, key
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes) -> dict[str, str]:
+def sign_req(
+    dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes
+) -> dict[str, str]:
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     b_hash = hashlib.sha256(body).hexdigest()
@@ -166,6 +171,7 @@ def ensure_admin_user(app):
 # Acceptance Tests (§66)
 # --------------------------------------------------------------------------
 
+
 def test_ip_change(client, app):
     """Spec §66 test: Device changes IP address -> IP_CHANGED event (LOW), remains ACTIVE."""
     dev_id, asset_id, key = create_asset_and_device(app)
@@ -190,11 +196,15 @@ def test_ip_change(client, app):
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        events = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.IP_CHANGED).all()
+        events = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.IP_CHANGED
+        ).all()
         assert len(events) >= 1
         assert events[0].severity == EventSeverity.LOW
         # Asset link remains unchanged
-        link = AssetDeviceLink.query.filter_by(device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE).first()
+        link = AssetDeviceLink.query.filter_by(
+            device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE
+        ).first()
         assert link is not None
         assert link.asset.asset_id == asset_id
 
@@ -223,7 +233,9 @@ def test_hostname_change(client, app):
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        events = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.HOSTNAME_CHANGED).all()
+        events = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.HOSTNAME_CHANGED
+        ).all()
         assert len(events) >= 1
         assert events[0].severity == EventSeverity.LOW
 
@@ -250,7 +262,9 @@ def test_gpu_upgrade(client, app):
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        events = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.GPU_CHANGED).all()
+        events = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.GPU_CHANGED
+        ).all()
         assert len(events) >= 1
         assert events[0].severity == EventSeverity.LOW
 
@@ -276,14 +290,18 @@ def test_ssd_replacement(client, app):
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        events = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.DISK_CHANGED).all()
+        events = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.DISK_CHANGED
+        ).all()
         assert len(events) >= 1
         assert events[0].severity == EventSeverity.MEDIUM
 
 
 def test_os_reinstall(client, app):
     """Spec §66 test: OS reinstalled on same hardware -> decision engine identifies candidate, PENDING_REVERIFICATION."""
-    dev_id, _, _ = create_asset_and_device(app, mb_serial="MB-REINSTALL-1", uuid_str="UUID-REINSTALL-1")
+    dev_id, _, _ = create_asset_and_device(
+        app, mb_serial="MB-REINSTALL-1", uuid_str="UUID-REINSTALL-1"
+    )
 
     with app.app_context():
         obs = Observation(
@@ -307,8 +325,16 @@ def test_os_reinstall(client, app):
 def test_identical_machine(client, app):
     """Spec §66 test: Two identical spec machines with different tokens map to separate assets/devices."""
     with app.app_context():
-        asset1 = Asset(asset_id=generate_next_asset_id(db.session), asset_tag="TAG-LAB-01", asset_type=AssetType.DESKTOP)
-        asset2 = Asset(asset_id=generate_next_asset_id(db.session), asset_tag="TAG-LAB-02", asset_type=AssetType.DESKTOP)
+        asset1 = Asset(
+            asset_id=generate_next_asset_id(db.session),
+            asset_tag="TAG-LAB-01",
+            asset_type=AssetType.DESKTOP,
+        )
+        asset2 = Asset(
+            asset_id=generate_next_asset_id(db.session),
+            asset_tag="TAG-LAB-02",
+            asset_type=AssetType.DESKTOP,
+        )
         db.session.add_all([asset1, asset2])
         db.session.commit()
 
@@ -318,7 +344,9 @@ def test_identical_machine(client, app):
 
     # Enroll Machine 1
     k1 = Ed25519PrivateKey.generate()
-    pub1 = base64.b64encode(k1.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+    pub1 = base64.b64encode(
+        k1.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    ).decode()
     nonce1 = uuid.uuid4().hex
     ts1 = int(time.time())
     h1 = hashlib.sha256(raw_tok1.encode()).hexdigest()
@@ -330,7 +358,11 @@ def test_identical_machine(client, app):
         "proof_of_possession": sig1,
         "timestamp": ts1,
         "nonce": nonce1,
-        "identity_evidence": {"machine_uuid_hash": "UUID-M1", "motherboard_serial_hash": "MB-M1", "cpu_signature": "Ryzen 9"},
+        "identity_evidence": {
+            "machine_uuid_hash": "UUID-M1",
+            "motherboard_serial_hash": "MB-M1",
+            "cpu_signature": "Ryzen 9",
+        },
         "inventory": {"hostname": "lab-pc-01", "cpu_model": "Ryzen 9", "ram_total_mb": 32768},
     }
     resp1 = client.post("/api/v1/agents/enroll", json=p1)
@@ -339,7 +371,9 @@ def test_identical_machine(client, app):
 
     # Enroll Machine 2 (Identical hardware specs, different UUID/serial)
     k2 = Ed25519PrivateKey.generate()
-    pub2 = base64.b64encode(k2.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+    pub2 = base64.b64encode(
+        k2.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    ).decode()
     nonce2 = uuid.uuid4().hex
     ts2 = int(time.time())
     h2 = hashlib.sha256(raw_tok2.encode()).hexdigest()
@@ -351,7 +385,11 @@ def test_identical_machine(client, app):
         "proof_of_possession": sig2,
         "timestamp": ts2,
         "nonce": nonce2,
-        "identity_evidence": {"machine_uuid_hash": "UUID-M2", "motherboard_serial_hash": "MB-M2", "cpu_signature": "Ryzen 9"},
+        "identity_evidence": {
+            "machine_uuid_hash": "UUID-M2",
+            "motherboard_serial_hash": "MB-M2",
+            "cpu_signature": "Ryzen 9",
+        },
         "inventory": {"hostname": "lab-pc-02", "cpu_model": "Ryzen 9", "ram_total_mb": 32768},
     }
     resp2 = client.post("/api/v1/agents/enroll", json=p2)
@@ -423,14 +461,20 @@ def test_motherboard_replacement(client, app):
 
     # Admin approves hardware change
     admin_headers = ensure_admin_user(app)
-    appr_resp = client.post(f"/api/v1/admin/devices/{dev_id}/approve-hardware-change", headers=admin_headers)
+    appr_resp = client.post(
+        f"/api/v1/admin/devices/{dev_id}/approve-hardware-change", headers=admin_headers
+    )
     assert appr_resp.status_code == 200
     assert appr_resp.get_json()["status"] == "approved"
 
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        latest_ev = DeviceIdentityEvidence.query.filter_by(device_id=dev.id).order_by(DeviceIdentityEvidence.captured_at.desc()).first()
+        latest_ev = (
+            DeviceIdentityEvidence.query.filter_by(device_id=dev.id)
+            .order_by(DeviceIdentityEvidence.captured_at.desc())
+            .first()
+        )
         assert latest_ev.trusted is True
 
 
@@ -489,7 +533,9 @@ def test_ram_upgrade(client, app):
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert dev.status == DeviceStatus.ACTIVE
-        events = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.RAM_CHANGED).all()
+        events = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.RAM_CHANGED
+        ).all()
         assert len(events) >= 1
         assert events[0].severity == EventSeverity.LOW
 
@@ -518,7 +564,10 @@ def test_score_never_links_asset(app):
         decision, _candidates, score = determine_device_identity(obs)
         assert score >= 99.0
         # Decision must route to re-verification or manual verification, NEVER link
-        assert decision in (IdentityDecision.PENDING_REVERIFICATION, IdentityDecision.MANUAL_VERIFICATION)
+        assert decision in (
+            IdentityDecision.PENDING_REVERIFICATION,
+            IdentityDecision.MANUAL_VERIFICATION,
+        )
 
         # AssetDeviceLink count must NOT have increased
         after_links_count = AssetDeviceLink.query.count()
@@ -550,14 +599,19 @@ def test_golden_image_clones_are_distinct(tmp_path):
     # Unique private keys and agent_instance_ids
     assert store1.agent_instance_id != store2.agent_instance_id
 
-    raw_k1 = key1.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    raw_k2 = key2.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    raw_k1 = key1.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    raw_k2 = key2.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
     assert raw_k1 != raw_k2
 
 
 # --------------------------------------------------------------------------
 # Additional unit tests for identity_service coverage
 # --------------------------------------------------------------------------
+
 
 def test_similarity_score_calculation():
     """Unit test for calculate_similarity_score weighting and missing field normalization."""
@@ -627,7 +681,9 @@ def test_admin_unclaimed_and_pair_endpoints(client, app):
 def test_decision_engine_branches(app):
     """Test decision engine branches: valid signature, unknown, manual verification, ambiguous."""
     with app.app_context():
-        dev_id, _, _ = create_asset_and_device(app, mb_serial="MB-BRANCH-1", uuid_str="UUID-BRANCH-1")
+        dev_id, _, _ = create_asset_and_device(
+            app, mb_serial="MB-BRANCH-1", uuid_str="UUID-BRANCH-1"
+        )
 
         # 1. Valid signature for active device -> SAME_DEVICE
         obs_sig = Observation(
@@ -646,7 +702,12 @@ def test_decision_engine_branches(app):
         assert len(cands) == 0
 
         # 3. Only 1 strong anchor matches -> MANUAL_VERIFICATION
-        obs_manual = Observation(evidence={"machine_uuid_hash": "UUID-BRANCH-1", "motherboard_serial_hash": "different-mb"})
+        obs_manual = Observation(
+            evidence={
+                "machine_uuid_hash": "UUID-BRANCH-1",
+                "motherboard_serial_hash": "different-mb",
+            }
+        )
         dec, cands, score = determine_device_identity(obs_manual)
         assert dec == IdentityDecision.MANUAL_VERIFICATION
         assert len(cands) == 1
@@ -685,11 +746,15 @@ def test_reconcile_tpm_and_nic_changed(client, app):
 
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
-        nic_ev = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.NIC_CHANGED).first()
+        nic_ev = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.NIC_CHANGED
+        ).first()
         assert nic_ev is not None
         assert nic_ev.severity == EventSeverity.MEDIUM
 
-        tpm_ev = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.TPM_CHANGED).first()
+        tpm_ev = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.TPM_CHANGED
+        ).first()
         assert tpm_ev is not None
         assert tpm_ev.severity == EventSeverity.HIGH
 
@@ -704,4 +769,3 @@ def test_identity_service_error_handling(app):
 
         with pytest.raises(ValueError, match="not found"):
             pair_unclaimed_device("VD-DEVICE-NONEXISTENT", "VD-ASSET-000001", "admin")
-

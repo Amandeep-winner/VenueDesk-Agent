@@ -4,6 +4,7 @@ Revision ID: a1b2c3d4e5f6
 Revises: 9c0d1e2f3a4b
 Create Date: 2026-10-14 03:20:00.000000
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -25,9 +26,16 @@ def upgrade():
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("device_id", "event_id", name="uq_processed_events_device_event"),
     )
-    op.create_index("ix_processed_events_device_id", "processed_events", ["device_id"], unique=False)
+    op.create_index(
+        "ix_processed_events_device_id", "processed_events", ["device_id"], unique=False
+    )
     op.create_index("ix_processed_events_event_id", "processed_events", ["event_id"], unique=False)
-    op.create_index("idx_processed_events_device_time", "processed_events", ["device_id", "processed_at"], unique=False)
+    op.create_index(
+        "idx_processed_events_device_time",
+        "processed_events",
+        ["device_id", "processed_at"],
+        unique=False,
+    )
 
 
 def downgrade():

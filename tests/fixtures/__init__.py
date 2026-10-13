@@ -1,4 +1,5 @@
 """Export synthetic hardware fixtures and test helpers."""
+
 from tests.fixtures.synthetic import (
     SyntheticDevice,
     get_ai_lab_pc_07,

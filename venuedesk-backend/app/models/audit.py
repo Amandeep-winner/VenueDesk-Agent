@@ -1,4 +1,5 @@
 """Audit log model for immutable tracking of all administrative and lifecycle operations."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String
@@ -15,11 +16,14 @@ def utc_now() -> datetime:
 
 class AuditLog(db.Model):
     """Append-only audit trail."""
+
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     actor_id = Column(String(128), nullable=False)
-    actor_type = Column(SQLEnum(ActorType, native_enum=False), nullable=False, default=ActorType.USER)
+    actor_type = Column(
+        SQLEnum(ActorType, native_enum=False), nullable=False, default=ActorType.USER
+    )
     action = Column(SQLEnum(AuditAction, native_enum=False), nullable=False, index=True)
     entity_type = Column(String(64), nullable=False)
     entity_id = Column(String(128), nullable=False, index=True)
@@ -43,4 +47,3 @@ def receive_before_update(mapper, connection, target):
 def receive_before_delete(mapper, connection, target):
     """Enforce append-only invariant: AuditLog records can never be deleted."""
     raise PermissionError("AuditLog records are strictly append-only and cannot be deleted.")
-

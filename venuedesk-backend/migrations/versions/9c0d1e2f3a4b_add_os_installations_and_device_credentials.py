@@ -4,6 +4,7 @@ Revision ID: 9c0d1e2f3a4b
 Revises: 8b9c0d1e2f3a
 Create Date: 2026-10-14 03:00:00.000000
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -18,17 +19,31 @@ def upgrade():
     # 1. Add os_installation_id to os_installations and backfill from agent_instance_id
     with op.batch_alter_table("os_installations") as batch_op:
         batch_op.add_column(sa.Column("os_installation_id", sa.String(length=64), nullable=True))
-        batch_op.create_index("ix_os_installations_os_installation_id", ["os_installation_id"], unique=False)
-        batch_op.create_index("ix_os_inst_device_os_inst_id", ["device_id", "os_installation_id"], unique=False)
+        batch_op.create_index(
+            "ix_os_installations_os_installation_id", ["os_installation_id"], unique=False
+        )
+        batch_op.create_index(
+            "ix_os_inst_device_os_inst_id", ["device_id", "os_installation_id"], unique=False
+        )
 
-    op.execute("UPDATE os_installations SET os_installation_id = agent_instance_id WHERE os_installation_id IS NULL")
+    op.execute(
+        "UPDATE os_installations SET os_installation_id = agent_instance_id WHERE os_installation_id IS NULL"
+    )
 
     # 2. Add scope and device_id to enrollment_tokens, and allow nullable asset_id
     with op.batch_alter_table("enrollment_tokens") as batch_op:
-        batch_op.add_column(sa.Column("scope", sa.String(length=32), nullable=False, server_default="ASSET"))
+        batch_op.add_column(
+            sa.Column("scope", sa.String(length=32), nullable=False, server_default="ASSET")
+        )
         batch_op.add_column(sa.Column("device_id", sa.Integer(), nullable=True))
         batch_op.alter_column("asset_id", existing_type=sa.Integer(), nullable=True)
-        batch_op.create_foreign_key("fk_enrollment_tokens_device_id", "physical_devices", ["device_id"], ["id"], ondelete="CASCADE")
+        batch_op.create_foreign_key(
+            "fk_enrollment_tokens_device_id",
+            "physical_devices",
+            ["device_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
         batch_op.create_index("ix_enrollment_tokens_device_id", ["device_id"], unique=False)
 
     # 3. Create device_credentials table
@@ -45,8 +60,15 @@ def upgrade():
         sa.ForeignKeyConstraint(["device_id"], ["physical_devices.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_device_credentials_device_id", "device_credentials", ["device_id"], unique=False)
-    op.create_index("ix_device_credentials_os_inst_id", "device_credentials", ["os_installation_id"], unique=False)
+    op.create_index(
+        "ix_device_credentials_device_id", "device_credentials", ["device_id"], unique=False
+    )
+    op.create_index(
+        "ix_device_credentials_os_inst_id",
+        "device_credentials",
+        ["os_installation_id"],
+        unique=False,
+    )
 
     # Backfill device_credentials from existing physical_devices
     op.execute(
@@ -62,12 +84,28 @@ def upgrade():
     with op.batch_alter_table("device_recovery_requests") as batch_op:
         batch_op.add_column(sa.Column("candidate_device_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("evidence_snapshot_id", sa.Integer(), nullable=True))
-        batch_op.add_column(sa.Column("new_os_installation_id", sa.String(length=64), nullable=True))
+        batch_op.add_column(
+            sa.Column("new_os_installation_id", sa.String(length=64), nullable=True)
+        )
         batch_op.add_column(sa.Column("reason", sa.String(length=256), nullable=True))
         batch_op.alter_column("device_id", existing_type=sa.Integer(), nullable=True)
-        batch_op.create_foreign_key("fk_recovery_candidate_device_id", "physical_devices", ["candidate_device_id"], ["id"], ondelete="CASCADE")
-        batch_op.create_foreign_key("fk_recovery_evidence_snapshot_id", "device_identity_evidence", ["evidence_snapshot_id"], ["id"], ondelete="SET NULL")
-        batch_op.create_index("ix_device_recovery_requests_candidate_id", ["candidate_device_id"], unique=False)
+        batch_op.create_foreign_key(
+            "fk_recovery_candidate_device_id",
+            "physical_devices",
+            ["candidate_device_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
+        batch_op.create_foreign_key(
+            "fk_recovery_evidence_snapshot_id",
+            "device_identity_evidence",
+            ["evidence_snapshot_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+        batch_op.create_index(
+            "ix_device_recovery_requests_candidate_id", ["candidate_device_id"], unique=False
+        )
 
 
 def downgrade():

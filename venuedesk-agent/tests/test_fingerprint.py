@@ -1,4 +1,5 @@
 """Unit tests for identity fingerprinting, canonicalization, and HMAC hashing."""
+
 from agent.identity.evidence import IdentityEvidence
 from agent.identity.fingerprint import (
     compute_fingerprint,
@@ -97,14 +98,16 @@ def test_fingerprint_excludes_volatile_fields():
         "cpu": "Intel Core i7",
     }
     with_volatile = dict(base_ev)
-    with_volatile.update({
-        "ip_address": "192.168.1.50",
-        "hostname": "lab-pc-01",
-        "free_space_bytes": 1024000,
-        "uptime": 99999,
-        "temperature": 55.2,
-        "current_user": "alice",
-    })
+    with_volatile.update(
+        {
+            "ip_address": "192.168.1.50",
+            "hostname": "lab-pc-01",
+            "free_space_bytes": 1024000,
+            "uptime": 99999,
+            "temperature": 55.2,
+            "current_user": "alice",
+        }
+    )
     assert compute_fingerprint(base_ev) == compute_fingerprint(with_volatile)
 
 

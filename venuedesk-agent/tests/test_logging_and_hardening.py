@@ -1,4 +1,5 @@
 """Tests for Phase 11: Logging redaction, security filters, and HTTPS enforcement."""
+
 import logging
 
 import pytest

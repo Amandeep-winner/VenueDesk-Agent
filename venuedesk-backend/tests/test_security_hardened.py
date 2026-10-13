@@ -3,6 +3,7 @@
 Covers cryptographic verification, atomic replay protection, state policies,
 token security, log redaction, and fail-closed endpoint coverage.
 """
+
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -96,7 +97,9 @@ def test_replayed_nonce(app, client):
     body = b"{}"
     fixed_nonce = uuid.uuid4().hex
 
-    headers = sign_request(dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce)
+    headers = sign_request(
+        dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce
+    )
     r1 = client.post("/api/v1/agents/heartbeat", data=body, headers=headers)
     assert r1.status_code == 200
 
@@ -111,7 +114,10 @@ def test_concurrent_same_nonce_exactly_one_wins(tmp_path):
     db_url = f"sqlite:///{db_file}"
     engine_opts = {"connect_args": {"timeout": 30}}
 
-    init_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+    init_app = create_app(
+        "testing",
+        test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts},
+    )
     with init_app.app_context():
         with db.engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -121,10 +127,18 @@ def test_concurrent_same_nonce_exactly_one_wins(tmp_path):
     dev_id, key = create_enrolled_device(init_app, status=DeviceStatus.ACTIVE)
     fixed_nonce = uuid.uuid4().hex
     body = b'{"msg": "concurrent"}'
-    headers = sign_request(dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce)
+    headers = sign_request(
+        dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce
+    )
 
     def send_req(_):
-        worker_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+        worker_app = create_app(
+            "testing",
+            test_config={
+                "SQLALCHEMY_DATABASE_URI": db_url,
+                "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
+            },
+        )
         with worker_app.test_client() as worker_client:
             res = worker_client.post("/api/v1/agents/heartbeat", data=body, headers=headers)
             return res.status_code
@@ -177,17 +191,25 @@ def test_suspended_device_denied_everything(app, client):
     # Heartbeat
     hb_body = b"{}"
     hb_headers = sign_request(dev_id, key, "POST", "/api/v1/agents/heartbeat", hb_body)
-    assert client.post("/api/v1/agents/heartbeat", data=hb_body, headers=hb_headers).status_code == 403
+    assert (
+        client.post("/api/v1/agents/heartbeat", data=hb_body, headers=hb_headers).status_code == 403
+    )
 
     # Inventory
     inv_body = b'{"hostname": "test"}'
     inv_headers = sign_request(dev_id, key, "POST", "/api/v1/agents/inventory", inv_body)
-    assert client.post("/api/v1/agents/inventory", data=inv_body, headers=inv_headers).status_code == 403
+    assert (
+        client.post("/api/v1/agents/inventory", data=inv_body, headers=inv_headers).status_code
+        == 403
+    )
 
     # Telemetry
     tel_body = b'{"metrics": []}'
     tel_headers = sign_request(dev_id, key, "POST", "/api/v1/agents/telemetry", tel_body)
-    assert client.post("/api/v1/agents/telemetry", data=tel_body, headers=tel_headers).status_code == 403
+    assert (
+        client.post("/api/v1/agents/telemetry", data=tel_body, headers=tel_headers).status_code
+        == 403
+    )
 
     # Jobs
     job_headers = sign_request(dev_id, key, "GET", "/api/v1/agents/jobs", b"")
@@ -288,7 +310,10 @@ def test_concurrent_token_use_exactly_one_wins(tmp_path):
     db_url = f"sqlite:///{db_file}"
     engine_opts = {"connect_args": {"timeout": 30}}
 
-    init_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+    init_app = create_app(
+        "testing",
+        test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts},
+    )
     with init_app.app_context():
         with db.engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -303,8 +328,16 @@ def test_concurrent_token_use_exactly_one_wins(tmp_path):
         asset_id = asset.id
 
     def enroll_worker(worker_idx):
-        worker_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
-        payload, _ = create_test_endpoint_payload(token=raw_token, hardware_suffix=f"worker-{worker_idx}")
+        worker_app = create_app(
+            "testing",
+            test_config={
+                "SQLALCHEMY_DATABASE_URI": db_url,
+                "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
+            },
+        )
+        payload, _ = create_test_endpoint_payload(
+            token=raw_token, hardware_suffix=f"worker-{worker_idx}"
+        )
         with worker_app.test_client() as worker_client:
             res = worker_client.post(
                 "/api/v1/agents/enroll",
@@ -432,5 +465,7 @@ def test_policy_matrix(app, client, status, endpoint, method, expected_allowed):
     if expected_allowed:
         assert resp.status_code != 403, f"Expected {status} on {endpoint} to be allowed, got 403"
     else:
-        assert resp.status_code == 403, f"Expected {status} on {endpoint} to be denied (403), got {resp.status_code}"
+        assert resp.status_code == 403, (
+            f"Expected {status} on {endpoint} to be denied (403), got {resp.status_code}"
+        )
         assert resp.get_json()["error"] == "device_blocked"

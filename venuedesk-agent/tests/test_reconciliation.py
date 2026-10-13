@@ -1,4 +1,5 @@
 """Unit tests for agent-side identity and inventory diffing."""
+
 from agent.identity.evidence import IdentityEvidence
 from agent.identity.reconciliation import diff_evidence, diff_inventory
 

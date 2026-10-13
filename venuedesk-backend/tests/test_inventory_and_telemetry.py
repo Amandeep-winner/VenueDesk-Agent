@@ -1,4 +1,5 @@
 """Integration and unit tests for inventory ingestion, telemetry batching, retention pruning, and admin query API."""
+
 import base64
 import hashlib
 import json
@@ -49,7 +50,9 @@ def create_test_device(app) -> tuple[str, Ed25519PrivateKey]:
     return dev_id, key
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes) -> dict[str, str]:
+def sign_req(
+    dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes
+) -> dict[str, str]:
     """Helper generating auth headers for test client."""
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex

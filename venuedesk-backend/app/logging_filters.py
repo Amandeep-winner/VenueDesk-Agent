@@ -1,4 +1,5 @@
 """Logging filters for sensitive token and credential redaction."""
+
 import logging
 import re
 from typing import Any
@@ -19,7 +20,9 @@ class RedactingFilter(logging.Filter):
             if isinstance(record.args, dict):
                 record.args = {k: self._redact_dict_entry(k, v) for k, v in record.args.items()}
             elif isinstance(record.args, (list, tuple)):
-                record.args = tuple(self.redact(v) if isinstance(v, str) else v for v in record.args)
+                record.args = tuple(
+                    self.redact(v) if isinstance(v, str) else v for v in record.args
+                )
         return True
 
     @classmethod

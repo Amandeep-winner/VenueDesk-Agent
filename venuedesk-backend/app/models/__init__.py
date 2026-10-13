@@ -1,4 +1,5 @@
 """Central export of all database models and domain enums."""
+
 from app.models.asset import Asset, AssetSequence, generate_next_asset_id
 from app.models.audit import AuditLog
 from app.models.device import (

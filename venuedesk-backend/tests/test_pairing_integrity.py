@@ -1,4 +1,5 @@
 """Tests for device-to-asset mapping integrity, constraints, and race conditions."""
+
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -33,7 +34,9 @@ def _create_asset(asset_id: str = "VD-ASSET-000100", tag: str = "TAG-001") -> As
     return asset
 
 
-def _create_device(device_id: str = "VD-DEVICE-0001", status: DeviceStatus = DeviceStatus.UNCLAIMED) -> PhysicalDevice:
+def _create_device(
+    device_id: str = "VD-DEVICE-0001", status: DeviceStatus = DeviceStatus.UNCLAIMED
+) -> PhysicalDevice:
     dev = PhysicalDevice(
         device_id=device_id,
         device_public_key="test_public_key_b64",
@@ -53,11 +56,15 @@ def test_device_already_linked_cannot_link_to_second_asset(app):
         db.session.commit()
 
         # First pairing succeeds
-        pair_device(dev.device_id, asset1.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+        pair_device(
+            dev.device_id, asset1.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+        )
 
         # Second pairing must raise LinkConflictError
         with pytest.raises(LinkConflictError):
-            pair_device(dev.device_id, asset2.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+            pair_device(
+                dev.device_id, asset2.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+            )
 
 
 def test_asset_already_linked_cannot_accept_second_device(app):
@@ -68,10 +75,14 @@ def test_asset_already_linked_cannot_accept_second_device(app):
         dev2 = _create_device("VD-DEVICE-0004", DeviceStatus.UNCLAIMED)
         db.session.commit()
 
-        pair_device(dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+        pair_device(
+            dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+        )
 
         with pytest.raises(LinkConflictError):
-            pair_device(dev2.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+            pair_device(
+                dev2.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+            )
 
 
 def test_authorized_replacement_closes_old_link_and_preserves_history(app):
@@ -82,7 +93,9 @@ def test_authorized_replacement_closes_old_link_and_preserves_history(app):
         dev2 = _create_device("VD-DEVICE-0006", DeviceStatus.UNCLAIMED)
         db.session.commit()
 
-        pair_device(dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+        pair_device(
+            dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+        )
 
         # Now replace with dev2
         pair_device(
@@ -94,7 +107,11 @@ def test_authorized_replacement_closes_old_link_and_preserves_history(app):
             reason="Computer replacement for lab upgrade",
         )
 
-        links = AssetDeviceLink.query.filter_by(asset_id=asset.id).order_by(AssetDeviceLink.id.asc()).all()
+        links = (
+            AssetDeviceLink.query.filter_by(asset_id=asset.id)
+            .order_by(AssetDeviceLink.id.asc())
+            .all()
+        )
         assert len(links) == 2
         # Old link is CLOSED
         assert links[0].device_id == dev1.id
@@ -115,7 +132,9 @@ def test_unauthorized_reassignment_rejected(app):
         dev2 = _create_device("VD-DEVICE-0008", DeviceStatus.UNCLAIMED)
         db.session.commit()
 
-        pair_device(dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+        pair_device(
+            dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+        )
 
         # Missing reason
         with pytest.raises(LinkConflictError):
@@ -175,7 +194,9 @@ def test_token_enrollment_respects_link_rules(app, client):
         dev1 = _create_device("VD-DEVICE-0010", DeviceStatus.UNCLAIMED)
         db.session.commit()
 
-        pair_device(dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
+        pair_device(
+            dev1.device_id, asset.asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN
+        )
 
         # Try enrolling a second device using an enrollment token for asset
         from test_enrollment import create_test_endpoint_payload
@@ -234,7 +255,10 @@ def test_concurrent_pairing_same_asset(tmp_path):
     db_url = f"sqlite:///{db_file}"
     engine_opts = {"connect_args": {"timeout": 30}}
 
-    test_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+    test_app = create_app(
+        "testing",
+        test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts},
+    )
     with test_app.app_context():
         with db.engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -247,7 +271,13 @@ def test_concurrent_pairing_same_asset(tmp_path):
         device_ids = [d.device_id for d in devices]
 
     def attempt_pair(dev_id):
-        worker_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+        worker_app = create_app(
+            "testing",
+            test_config={
+                "SQLALCHEMY_DATABASE_URI": db_url,
+                "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
+            },
+        )
         with worker_app.app_context():
             try:
                 pair_device(dev_id, asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
@@ -276,7 +306,10 @@ def test_concurrent_pairing_same_device_two_assets(tmp_path):
     db_url = f"sqlite:///{db_file}"
     engine_opts = {"connect_args": {"timeout": 30}}
 
-    test_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+    test_app = create_app(
+        "testing",
+        test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts},
+    )
     with test_app.app_context():
         with db.engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -290,7 +323,13 @@ def test_concurrent_pairing_same_device_two_assets(tmp_path):
         d_id = dev.device_id
 
     def attempt_pair(asset_id):
-        worker_app = create_app("testing", test_config={"SQLALCHEMY_DATABASE_URI": db_url, "SQLALCHEMY_ENGINE_OPTIONS": engine_opts})
+        worker_app = create_app(
+            "testing",
+            test_config={
+                "SQLALCHEMY_DATABASE_URI": db_url,
+                "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
+            },
+        )
         with worker_app.app_context():
             try:
                 pair_device(d_id, asset_id, admin_name="admin", actor_role=UserRole.INFRA_ADMIN)
@@ -333,5 +372,6 @@ def test_no_direct_asset_device_link_instantiation_outside_identity_service():
                     if pattern.search(line) and not line.strip().startswith("#"):
                         violations.append(f"{rel_path}:{line_no}: {line.strip()}")
 
-    assert not violations, f"Direct AssetDeviceLink instantiation found outside identity_service: {violations}"
-
+    assert not violations, (
+        f"Direct AssetDeviceLink instantiation found outside identity_service: {violations}"
+    )

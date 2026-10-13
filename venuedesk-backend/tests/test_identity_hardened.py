@@ -3,6 +3,7 @@
 Covers fingerprint versioning, tri-state missing evidence handling,
 change classification, historical evidence preservation, and golden vector pinning.
 """
+
 import base64
 import json
 from datetime import UTC, datetime
@@ -166,7 +167,9 @@ def test_ip_change(app):
         assert DeviceEventType.IP_CHANGED in event_types
 
         # Assert change record created with requires_approval=False
-        records = HardwareChangeRecord.query.filter_by(device_id=device.id, field="ip_addresses").all()
+        records = HardwareChangeRecord.query.filter_by(
+            device_id=device.id, field="ip_addresses"
+        ).all()
         assert len(records) >= 1
         assert not records[0].requires_approval
         assert records[0].evidence_source == EvidenceSource.AGENT_INVENTORY
@@ -204,7 +207,9 @@ def test_ram_change(app):
         assert DeviceEventType.RAM_CHANGED in event_types
         assert DeviceEventType.HARDWARE_CHANGED in event_types
 
-        records = HardwareChangeRecord.query.filter_by(device_id=device.id, field="ram_total_mb").all()
+        records = HardwareChangeRecord.query.filter_by(
+            device_id=device.id, field="ram_total_mb"
+        ).all()
         assert len(records) >= 1
         assert not records[0].requires_approval
         assert device.status == DeviceStatus.ACTIVE
@@ -266,7 +271,9 @@ def test_motherboard_evidence_change_alone_requires_review(app):
         assert DeviceEventType.MOTHERBOARD_CHANGED in event_types
 
         # Must require approval and place device in PENDING_REVERIFICATION
-        records = HardwareChangeRecord.query.filter_by(device_id=device.id, field="motherboard_serial_hash").all()
+        records = HardwareChangeRecord.query.filter_by(
+            device_id=device.id, field="motherboard_serial_hash"
+        ).all()
         assert len(records) >= 1
         assert records[0].requires_approval
         assert device.status == DeviceStatus.PENDING_REVERIFICATION
@@ -281,7 +288,15 @@ def test_motherboard_evidence_change_alone_requires_review(app):
 def test_missing_serial_never_equals_missing_serial():
     """Missing evidence (None == None) is UNKNOWN and never counts as a match."""
     # Test normalization of placeholders to None
-    placeholders = ["", "none", "unknown", "null", "to be filled by o.e.m.", "00000000-0000-0000-0000-000000000000", "ffffffff"]
+    placeholders = [
+        "",
+        "none",
+        "unknown",
+        "null",
+        "to be filled by o.e.m.",
+        "00000000-0000-0000-0000-000000000000",
+        "ffffffff",
+    ]
     for ph in placeholders:
         assert norm(ph) is None
 
@@ -353,7 +368,9 @@ def test_conflicting_strong_evidence_enters_pending_reverification(app):
         assert DeviceEventType.IDENTITY_CHANGE_DETECTED in event_types
         assert device.status == DeviceStatus.PENDING_REVERIFICATION
 
-        record = HardwareChangeRecord.query.filter_by(device_id=device.id, field="strong_anchors_conflict").first()
+        record = HardwareChangeRecord.query.filter_by(
+            device_id=device.id, field="strong_anchors_conflict"
+        ).first()
         assert record is not None
         assert record.requires_approval
 
@@ -379,7 +396,10 @@ def test_identical_hardware_new_machine_not_auto_paired(app):
         decision, _candidates, _score = determine_device_identity(obs)
         # Never automatically paired as SAME_DEVICE without credentials
         assert decision != IdentityDecision.SAME_DEVICE
-        assert decision in (IdentityDecision.PENDING_REVERIFICATION, IdentityDecision.MANUAL_VERIFICATION)
+        assert decision in (
+            IdentityDecision.PENDING_REVERIFICATION,
+            IdentityDecision.MANUAL_VERIFICATION,
+        )
 
 
 def test_similarity_score_never_links_asset(app):
@@ -418,7 +438,11 @@ def test_history_retained_after_each_change(app):
         # Change 3: Disk
         reconcile_device_inventory(device, {"disks": ["Micron 2TB NVMe"]})
 
-        records = HardwareChangeRecord.query.filter_by(device_id=device.id).order_by(HardwareChangeRecord.occurred_at.asc()).all()
+        records = (
+            HardwareChangeRecord.query.filter_by(device_id=device.id)
+            .order_by(HardwareChangeRecord.occurred_at.asc())
+            .all()
+        )
         fields_recorded = [r.field for r in records]
         assert "ip_addresses" in fields_recorded
         assert "ram_total_mb" in fields_recorded
@@ -443,13 +467,18 @@ def test_key_rotation_does_not_create_new_device(client, app):
     msg = f"rotate\n{dev_id}\n{new_pub_b64}\n{ts}".encode()
     sig_by_old = base64.b64encode(old_key.sign(msg)).decode("ascii")
 
-    body = json.dumps({
-        "new_public_key": new_pub_b64,
-        "signature_by_old_key": sig_by_old,
-        "timestamp": ts,
-    }, separators=(",", ":")).encode("utf-8")
+    body = json.dumps(
+        {
+            "new_public_key": new_pub_b64,
+            "signature_by_old_key": sig_by_old,
+            "timestamp": ts,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
 
-    headers = sign_request(dev_id, old_key, "POST", "/api/v1/agents/rotate-credential", body, key_version=1)
+    headers = sign_request(
+        dev_id, old_key, "POST", "/api/v1/agents/rotate-credential", body, key_version=1
+    )
     headers["Content-Type"] = "application/json"
 
     resp = client.post("/api/v1/agents/rotate-credential", data=body, headers=headers)
@@ -465,5 +494,7 @@ def test_key_rotation_does_not_create_new_device(client, app):
         assert device.device_public_key == new_pub_b64
 
         # Assert asset link is completely untouched
-        active_links = AssetDeviceLink.query.filter_by(device_id=device.id, relationship_status=RelationshipStatus.ACTIVE).count()
+        active_links = AssetDeviceLink.query.filter_by(
+            device_id=device.id, relationship_status=RelationshipStatus.ACTIVE
+        ).count()
         assert active_links == 1

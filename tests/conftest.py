@@ -1,4 +1,5 @@
 """Shared test fixtures for the VenueDesk test suite."""
+
 import base64
 import uuid
 from datetime import UTC, datetime
@@ -159,8 +160,16 @@ def offline_agent_with_queue(tmp_path):
     """Fixture providing an Outbox populated with items of each priority level."""
     db_file = tmp_path / "offline_fixture_outbox.db"
     box = Outbox(db_file)
-    box.enqueue(PRIORITY_IDENTITY_EVENT, "identity", {"event": "p0_evidence", "fingerprint": "fp_fix"})
-    box.enqueue(PRIORITY_INVENTORY, "inventory", {"hostname": "fixture-host", "ram_total_mb": 16384})
+    box.enqueue(
+        PRIORITY_IDENTITY_EVENT,
+        "identity",
+        {"event": "p0_evidence", "fingerprint": "fp_fix"},
+    )
+    box.enqueue(
+        PRIORITY_INVENTORY,
+        "inventory",
+        {"hostname": "fixture-host", "ram_total_mb": 16384},
+    )
     box.enqueue(PRIORITY_TELEMETRY, "telemetry", {"sample_id": 1, "cpu_percent": 12.5})
     box.enqueue(PRIORITY_TELEMETRY, "telemetry", {"sample_id": 2, "cpu_percent": 14.0})
     return box
@@ -169,8 +178,10 @@ def offline_agent_with_queue(tmp_path):
 @pytest.fixture
 def fake_endpoint():
     """Factory helper providing real Ed25519 authenticated requests."""
+
     def _create_endpoint(device_id: str | None = None):
         key = Ed25519PrivateKey.generate()
         dev_id = device_id or f"VD-DEVICE-{uuid.uuid4().hex[:8].upper()}"
         return dev_id, key
+
     return _create_endpoint

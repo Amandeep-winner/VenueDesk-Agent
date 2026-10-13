@@ -150,7 +150,9 @@ Raw hardware strings undergo deterministic canonicalization before hashing:
 To prevent leaking raw institutional hardware serial numbers across networks, individual hardware identifiers are hashed using HMAC-SHA256 with the deployment-wide secret salt (`DEPLOYMENT_SALT`):
 
 ```python
-hashed_value = hmac.new(DEPLOYMENT_SALT, raw_value.lower().encode("utf-8"), hashlib.sha256).hexdigest()
+hashed_value = hmac.new(
+    DEPLOYMENT_SALT, raw_value.lower().encode("utf-8"), hashlib.sha256
+).hexdigest()
 ```
 
 The fingerprint is computed from canonical evidence locally on the endpoint; only HMAC hashes and the aggregate fingerprint are transmitted and stored in the database.

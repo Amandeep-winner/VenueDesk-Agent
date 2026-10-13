@@ -140,3 +140,18 @@ Every lifecycle state mutation creates an immutable audit row documenting the ac
 Device listing uses eager loading with selectinload across inventory and active asset links to eliminate N+1 queries.
 Identifier display rules mask sensitive identifiers, cryptographic secrets, private keys, and serials to preserve confidentiality.
 Endpoint policies in `ENDPOINT_POLICY` explicitly govern all API and UI administrative operations, closing unauthorized access by default.
+
+## Phase 8 Hardening Details
+
+Production database configuration requires PostgreSQL via `DATABASE_URL` and explicitly rejects SQLite unless `ALLOW_SQLITE_PROD=true` is set.
+Alembic migration `b2c3d4e5f6a7` adds composite indexes for `device_events(device_id, occurred_at)`, `physical_devices(status, last_seen)`, and `asset_device_links(asset_id, relationship_status)`.
+Database migration verification on a copied database is enforced by `tools/test_migration_on_copy.py` with foreign key and constraint integrity assertions.
+Retention CLI commands provide scheduled operational pruning for telemetry, expired nonces, and processed idempotency event records.
+Database backup and restore procedures are standardized around `pg_dump` and `pg_restore` and validated via `tools/backup_restore_check.sh`.
+Production server settings enforce `ProxyFix` reverse proxy forwarding headers, HSTS security headers, secure cookies, and maximum request payload limits of two megabytes.
+Rate limiting enforces request budgets on enrollment, recovery, and administrator login endpoints with retry-after headers.
+Agent configuration rejects unencrypted HTTP URLs in production mode unless the explicit `allow_insecure_dev=true` bypass is configured.
+The safe agent update mechanism defaults to notify-only (`auto_update=false`) and requires Ed25519 cryptographic release signature and SHA-256 package hash verification.
+Agent status CLI commands report comprehensive local health diagnostics including queue depth, dropped events count, and error codes.
+Clean uninstaller scripts for Linux and Windows allow administrators to stop and remove agent components and optionally purge state directories.
+The pilot plan and checklist define structured validation scenarios across 5 to 10 machines with rigorous go and no-go gates.

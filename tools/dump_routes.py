@@ -1,10 +1,13 @@
 """Dump API routes, auth decorators, and roles."""
+
 import inspect
 import os
 import sys
 
 # Ensure venuedesk-backend is in sys.path
-backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venuedesk-backend")
+backend_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venuedesk-backend"
+)
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
@@ -22,7 +25,11 @@ def inspect_endpoint_auth(func):
     nonlocals = cv.nonlocals
 
     # Policy enforcement decorator (Phase 2+)
-    if "policy" in filename or "enforce_policy" in code.co_name or "policy" in nonlocals:
+    if (
+        "policy" in filename
+        or "enforce_policy" in code.co_name
+        or "policy" in nonlocals
+    ):
         policy = nonlocals.get("policy")
         if policy:
             auth_kind = getattr(policy, "auth", str(policy))
@@ -39,9 +46,17 @@ def inspect_endpoint_auth(func):
     # require_role / require_ui_role / rbac.py
     if "rbac.py" in filename or "allowed_roles" in nonlocals:
         roles = nonlocals.get("allowed_roles")
-        role_names = [r.value if hasattr(r, "value") else str(r) for r in roles] if roles else ["all"]
+        role_names = (
+            [r.value if hasattr(r, "value") else str(r) for r in roles]
+            if roles
+            else ["all"]
+        )
         inner = nonlocals.get("f")
-        mod = getattr(inner, "__module__", "") if inner else getattr(func, "__module__", "")
+        mod = (
+            getattr(inner, "__module__", "")
+            if inner
+            else getattr(func, "__module__", "")
+        )
         if "admin_infra" in mod:
             return "require_ui_role", ", ".join(role_names)
         return "require_role", ", ".join(role_names)
@@ -82,7 +97,9 @@ def dump_routes(output_file=None):
     sep_line = "-+-".join("-" * col_widths[i] for i in range(len(headers)))
     content_lines = [header_line, sep_line]
     for row in rows:
-        content_lines.append(" | ".join(str(row[i]).ljust(col_widths[i]) for i in range(len(headers))))
+        content_lines.append(
+            " | ".join(str(row[i]).ljust(col_widths[i]) for i in range(len(headers)))
+        )
 
     output = "\n".join(content_lines)
     print(output)

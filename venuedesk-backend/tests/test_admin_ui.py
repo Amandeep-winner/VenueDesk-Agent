@@ -1,4 +1,5 @@
 """Integration tests for Phase 10: Admin Web UI, CSRF defense, and pairing token lifecycle."""
+
 from datetime import UTC, datetime
 
 from app.extensions import db
@@ -128,7 +129,11 @@ def test_ui_login_and_logout_flow(client, app):
 
     bad_resp = client.post(
         "/admin/infrastructure/login",
-        data={"username": "signin_admin", "password": "wrongpassword", "csrf_token": "valid_csrf_token"},
+        data={
+            "username": "signin_admin",
+            "password": "wrongpassword",
+            "csrf_token": "valid_csrf_token",
+        },
     )
     assert bad_resp.status_code == 200
     assert b"Invalid username or password" in bad_resp.data
@@ -136,7 +141,11 @@ def test_ui_login_and_logout_flow(client, app):
     # 2. Sign in with correct password succeeds and redirects
     ok_resp = client.post(
         "/admin/infrastructure/login",
-        data={"username": "signin_admin", "password": "adminsecret123", "csrf_token": "valid_csrf_token"},
+        data={
+            "username": "signin_admin",
+            "password": "adminsecret123",
+            "csrf_token": "valid_csrf_token",
+        },
         follow_redirects=True,
     )
     assert ok_resp.status_code == 200
@@ -212,6 +221,7 @@ def test_pairing_token_generated_and_shown_once_only(client, app):
 
     # Extract raw token from response
     import re
+
     token_match = re.search(r"PAIR-[A-Za-z0-9_\-]+", html)
     assert token_match is not None
     raw_token = token_match.group(0)
@@ -318,7 +328,10 @@ def test_verify_device_spec_57_form_submission(client, app):
     # GET verification form
     get_resp = client.get(f"/admin/infrastructure/devices/{dev_id}/verify")
     assert get_resp.status_code == 200
-    assert b"Physical Verification Form (Spec \xc2\xa757)" in get_resp.data or b"Physical Verification Form" in get_resp.data
+    assert (
+        b"Physical Verification Form (Spec \xc2\xa757)" in get_resp.data
+        or b"Physical Verification Form" in get_resp.data
+    )
 
     # POST verification form
     post_resp = client.post(
@@ -341,7 +354,9 @@ def test_verify_device_spec_57_form_submission(client, app):
         verified_dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
         assert verified_dev.status == DeviceStatus.ACTIVE
         assert verified_dev.last_verified_at is not None
-        active_link = next(l for l in verified_dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        active_link = next(
+            l for l in verified_dev.links if l.relationship_status == RelationshipStatus.ACTIVE
+        )
         assert active_link.asset.verification_status == AssetVerificationStatus.VERIFIED
         assert active_link.asset.lifecycle_status == AssetLifecycleStatus.IN_SERVICE
 
@@ -370,10 +385,10 @@ def test_suspend_and_unsuspend_device_ui_workflow(client, app):
 
         # Verify audit log created
         from app.models import AuditAction, AuditLog
-        log = (
-            AuditLog.query.filter_by(entity_id=dev_id, action=AuditAction.DEVICE_SUSPENDED)
-            .first()
-        )
+
+        log = AuditLog.query.filter_by(
+            entity_id=dev_id, action=AuditAction.DEVICE_SUSPENDED
+        ).first()
         assert log is not None
         assert log.actor_id == "suspend_admin"
 
@@ -398,7 +413,9 @@ def test_reassign_device_ui_workflow(client, app):
 
     with app.app_context():
         old_dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
-        old_link = next(l for l in old_dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        old_link = next(
+            l for l in old_dev.links if l.relationship_status == RelationshipStatus.ACTIVE
+        )
         old_asset_tag = old_link.asset.asset_tag
 
         # Create new target asset
@@ -445,7 +462,9 @@ def test_reassign_device_ui_workflow(client, app):
 
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
-        active_link = next(l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        active_link = next(
+            l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE
+        )
         assert active_link.asset.asset_id == target_asset_id
 
 
@@ -456,7 +475,9 @@ def test_retire_and_revoke_device_ui_workflow(client, app):
 
     with app.app_context():
         dev = PhysicalDevice.query.filter_by(device_id=dev_id).first()
-        active_link = next(l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        active_link = next(
+            l for l in dev.links if l.relationship_status == RelationshipStatus.ACTIVE
+        )
         tag = active_link.asset.asset_tag
 
     with client.session_transaction() as sess:
@@ -576,6 +597,8 @@ def test_devices_list_query_count_budget_no_n_plus_one(client, app):
             resp = client.get("/admin/infrastructure/devices")
             assert resp.status_code == 200
             # Listing 50 items must not do 50+ queries (no N+1). With joinedload/subqueryload it stays under 10.
-            assert query_count <= 10, f"Query count was {query_count}, expected <= 10 (N+1 query problem detected)"
+            assert query_count <= 10, (
+                f"Query count was {query_count}, expected <= 10 (N+1 query problem detected)"
+            )
         finally:
             event.remove(db.engine, "before_cursor_execute", query_listener)

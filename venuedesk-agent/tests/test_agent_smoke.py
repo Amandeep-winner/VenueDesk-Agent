@@ -1,4 +1,5 @@
 """Smoke and unit tests for agent configuration and CLI."""
+
 from click.testing import CliRunner
 
 from agent.config import AgentConfig

@@ -1,4 +1,5 @@
 """Local device identity and agent instance identifier helpers."""
+
 from agent.storage.database import AgentDatabase
 
 

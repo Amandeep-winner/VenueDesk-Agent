@@ -1,4 +1,5 @@
 """Ed25519 request signature verification and require_device_auth decorator."""
+
 import base64
 import hashlib
 

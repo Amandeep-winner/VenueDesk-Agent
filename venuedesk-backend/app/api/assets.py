@@ -1,4 +1,5 @@
 """Admin asset and pairing token management endpoints."""
+
 from datetime import UTC, datetime
 
 from flask import Blueprint, g, jsonify, request
@@ -48,7 +49,9 @@ def generate_pairing_token_endpoint(asset_id: str):
         except (ValueError, TypeError):
             pass
 
-    raw_token, token_obj = create_token_for_asset(asset.id, created_by=admin_name, ttl_hours=ttl_hours)
+    raw_token, token_obj = create_token_for_asset(
+        asset.id, created_by=admin_name, ttl_hours=ttl_hours
+    )
 
     db.session.add(
         AuditLog(
@@ -62,11 +65,13 @@ def generate_pairing_token_endpoint(asset_id: str):
     )
     db.session.commit()
 
-    return jsonify({
-        "asset_id": asset.asset_id,
-        "token": raw_token,
-        "expires_at": token_obj.expires_at.isoformat(),
-    }), 201
+    return jsonify(
+        {
+            "asset_id": asset.asset_id,
+            "token": raw_token,
+            "expires_at": token_obj.expires_at.isoformat(),
+        }
+    ), 201
 
 
 @assets_bp.route("/<asset_id>/pairing-token", methods=["DELETE"])
@@ -105,8 +110,10 @@ def revoke_pairing_token_endpoint(asset_id: str):
         )
         db.session.commit()
 
-    return jsonify({
-        "status": "revoked",
-        "asset_id": asset.asset_id,
-        "revoked_count": revoked_count,
-    }), 200
+    return jsonify(
+        {
+            "status": "revoked",
+            "asset_id": asset.asset_id,
+            "revoked_count": revoked_count,
+        }
+    ), 200

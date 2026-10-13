@@ -1,4 +1,5 @@
 """Enum definitions for VenueDesk models."""
+
 from enum import Enum
 
 
@@ -172,4 +173,3 @@ class FieldMatchResult(str, Enum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
     UNKNOWN = "UNKNOWN"
-

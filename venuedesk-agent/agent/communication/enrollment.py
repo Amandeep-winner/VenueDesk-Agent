@@ -1,4 +1,5 @@
 """Agent enrollment client implementation."""
+
 import hashlib
 import platform
 import time
@@ -30,7 +31,9 @@ def enroll_agent(
     """Enroll endpoint with the control plane and persist the assigned device identity."""
     server = (server_url or config.server_url).rstrip("/")
     if server.startswith("http://") and not config.allow_insecure_dev:
-        raise ValueError("Insecure HTTP server URLs are rejected unless allow_insecure_dev is true.")
+        raise ValueError(
+            "Insecure HTTP server URLs are rejected unless allow_insecure_dev is true."
+        )
 
     db_path = Path(config.state_dir) / "agent_state.db"
     db = AgentDatabase(db_path)

@@ -1,4 +1,5 @@
 """Windows Service wrapper for VenueDesk Agent."""
+
 import logging
 import os
 import sys
@@ -17,7 +18,9 @@ try:
     class VenueDeskService(win32serviceutil.ServiceFramework):
         _svc_name_ = "VenueDeskAgent"
         _svc_display_name_ = "VenueDesk Endpoint Agent"
-        _svc_description_ = "VenueDesk endpoint inventory, telemetry, and security lifecycle agent."
+        _svc_description_ = (
+            "VenueDesk endpoint inventory, telemetry, and security lifecycle agent."
+        )
 
         def __init__(self, args):
             super().__init__(args)
@@ -44,7 +47,9 @@ try:
             from agent.config import AgentConfig
 
             cfg = AgentConfig.load(config_path)
-            logger.info("Starting VenueDesk Windows Service with state dir %s", cfg.state_dir)
+            logger.info(
+                "Starting VenueDesk Windows Service with state dir %s", cfg.state_dir
+            )
 
             # Keep service alive checking stop event
             while self.is_running:
@@ -60,8 +65,12 @@ except ImportError:
             config_path = Path("config.toml")
 
         from agent.config import AgentConfig
+
         cfg = AgentConfig.load(config_path)
-        logger.info("Starting VenueDesk Agent background runner with state dir: %s", cfg.state_dir)
+        logger.info(
+            "Starting VenueDesk Agent background runner with state dir: %s",
+            cfg.state_dir,
+        )
         while True:
             time.sleep(60)
 

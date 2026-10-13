@@ -1,4 +1,5 @@
 """Enrollment service handling agent registration, proof-of-possession, and device-asset linking."""
+
 import hashlib
 import time
 from datetime import UTC, datetime
@@ -63,7 +64,9 @@ def enroll_agent(payload: dict, source_ip: str) -> dict:
         raise ValueError("Enrollment nonce replayed or duplicate")
 
     # 4. Proof of possession signature verification
-    token_sha256 = hashlib.sha256(token_str.strip().encode("utf-8")).hexdigest() if token_str else ""
+    token_sha256 = (
+        hashlib.sha256(token_str.strip().encode("utf-8")).hexdigest() if token_str else ""
+    )
     msg = f"enroll\n{token_sha256}\n{req_ts}\n{nonce}".encode()
     if not verify(pub_key_b64, pop_sig_b64, msg):
         raise ValueError("Cryptographic proof of possession verification failed")
@@ -83,7 +86,9 @@ def enroll_agent(payload: dict, source_ip: str) -> dict:
             if not device:
                 raise ValueError("Associated device not found")
             if device.status in (DeviceStatus.REVOKED, DeviceStatus.RETIRED):
-                raise ValueError(f"Device {device.device_id} is {device.status.value} and cannot accept new installations")
+                raise ValueError(
+                    f"Device {device.device_id} is {device.status.value} and cannot accept new installations"
+                )
 
             # Check active asset link
             active_link = AssetDeviceLink.query.filter_by(
@@ -215,7 +220,9 @@ def enroll_agent(payload: dict, source_ip: str) -> dict:
                         device_id=device.id,
                         event_type=DeviceEventType.IDENTITY_CHANGE_DETECTED,
                         severity=EventSeverity.HIGH,
-                        payload={"message": "Inconsistent strong anchors on device-scoped OS enrollment"},
+                        payload={
+                            "message": "Inconsistent strong anchors on device-scoped OS enrollment"
+                        },
                         occurred_at=now,
                         created_at=now,
                     )

@@ -1,4 +1,5 @@
 """Agent-facing control plane API endpoints."""
+
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -53,10 +54,12 @@ def enroll():
     source_ip = request.remote_addr or "127.0.0.1"
 
     if not check_enroll_rate_limit(source_ip):
-        return jsonify({
-            "error": "rate_limited",
-            "message": "Too many enrollment attempts. Please try again later.",
-        }), 429
+        return jsonify(
+            {
+                "error": "rate_limited",
+                "message": "Too many enrollment attempts. Please try again later.",
+            }
+        ), 429
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -69,7 +72,9 @@ def enroll():
         return jsonify({"error": "unclaimed_enrollment_disabled", "message": str(exc)}), 403
     except LinkConflictError:
         db.session.rollback()
-        return jsonify({"error": "invalid_enrollment_token", "message": "Invalid enrollment token"}), 400
+        return jsonify(
+            {"error": "invalid_enrollment_token", "message": "Invalid enrollment token"}
+        ), 400
     except ValueError as exc:
         # Audit failed enrollment attempt
         try:
@@ -100,10 +105,12 @@ def recover():
     source_ip = request.remote_addr or "127.0.0.1"
 
     if not check_enroll_rate_limit(source_ip):
-        return jsonify({
-            "error": "rate_limited",
-            "message": "Too many recovery attempts. Please try again later.",
-        }), 429
+        return jsonify(
+            {
+                "error": "rate_limited",
+                "message": "Too many recovery attempts. Please try again later.",
+            }
+        ), 429
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -115,7 +122,9 @@ def recover():
     nonce = payload.get("nonce")
 
     if not all([pub_key_b64, pop_sig_b64, req_ts, nonce]):
-        return jsonify({"error": "invalid_payload", "message": "Missing required cryptographic parameters"}), 400
+        return jsonify(
+            {"error": "invalid_payload", "message": "Missing required cryptographic parameters"}
+        ), 400
 
     try:
         req_ts_int = int(req_ts)
@@ -125,22 +134,28 @@ def recover():
     skew_limit = current_app.config.get("CLOCK_SKEW_SECONDS", 120)
     current_ts = int(time.time())
     if abs(current_ts - req_ts_int) > skew_limit:
-        return jsonify({"error": "clock_skew", "message": "Timestamp out of allowable skew window"}), 400
+        return jsonify(
+            {"error": "clock_skew", "message": "Timestamp out of allowable skew window"}
+        ), 400
 
     nonce_key = f"recover-{source_ip}-{pub_key_b64[:16]}"
     from app.security.replay import check_and_record_nonce
+
     if not check_and_record_nonce(nonce_key, str(nonce), skew_seconds=skew_limit):
         return jsonify({"error": "replay_detected", "message": "Nonce replayed"}), 400
 
     msg = f"recover\n{pub_key_b64}\n{req_ts}\n{nonce}".encode()
     if not verify(pub_key_b64, pop_sig_b64, msg):
-        return jsonify({"error": "invalid_signature", "message": "Cryptographic proof of possession failed"}), 400
+        return jsonify(
+            {"error": "invalid_signature", "message": "Cryptographic proof of possession failed"}
+        ), 400
 
     from app.services.identity_service import (
         IdentityDecision,
         Observation,
         determine_device_identity,
     )
+
     obs = Observation(
         device_public_key=pub_key_b64,
         evidence=payload.get("identity_evidence", {}),
@@ -170,6 +185,7 @@ def recover():
         db.session.add(event)
 
         from app.models import DeviceRecoveryRequest
+
         os_info = payload.get("os") or {}
         new_os_id = (
             payload.get("os_installation_id")
@@ -192,24 +208,32 @@ def recover():
         db.session.add(rec_req)
         db.session.commit()
 
-        return jsonify({
-            "status": "pending_approval",
-            "device_id": candidate.device_id,
-            "recovery_request_id": rec_req.id,
-            "message": "Recovery request pending administrator approval",
-        }), 200
+        return jsonify(
+            {
+                "status": "pending_approval",
+                "device_id": candidate.device_id,
+                "recovery_request_id": rec_req.id,
+                "message": "Recovery request pending administrator approval",
+            }
+        ), 200
 
     elif decision == IdentityDecision.UNKNOWN_DEVICE:
-        return jsonify({"error": "unknown_device", "message": "No matching device found for recovery"}), 404
+        return jsonify(
+            {"error": "unknown_device", "message": "No matching device found for recovery"}
+        ), 404
 
     elif decision == IdentityDecision.AMBIGUOUS:
-        return jsonify({"error": "ambiguous_match", "message": "Multiple candidate devices matched evidence"}), 409
+        return jsonify(
+            {"error": "ambiguous_match", "message": "Multiple candidate devices matched evidence"}
+        ), 409
 
     else:
-        return jsonify({
-            "error": "manual_verification_required",
-            "message": "Insufficient matching anchors for automatic recovery",
-        }), 400
+        return jsonify(
+            {
+                "error": "manual_verification_required",
+                "message": "Insufficient matching anchors for automatic recovery",
+            }
+        ), 400
 
 
 @agents_bp.route("/recover/status", methods=["GET"])
@@ -218,9 +242,12 @@ def recover_status():
     """Poll endpoint recovery approval status."""
     device_id = request.args.get("device_id") or request.headers.get("X-Device-ID")
     if not device_id:
-        return jsonify({"error": "missing_parameter", "message": "device_id query param or header required"}), 400
+        return jsonify(
+            {"error": "missing_parameter", "message": "device_id query param or header required"}
+        ), 400
 
     from app.models import DeviceRecoveryRequest, PhysicalDevice
+
     device = PhysicalDevice.query.filter_by(device_id=device_id).first()
     if not device:
         return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
@@ -234,17 +261,19 @@ def recover_status():
         return jsonify({"status": "none", "device_id": device.device_id}), 200
 
     if rec_req.status == "APPROVED":
-        return jsonify({
-            "status": "approved",
-            "device_id": device.device_id,
-            "credential_version": device.credential_version,
-            "config": {
-                "heartbeat_seconds": current_app.config.get("HEARTBEAT_SECONDS", 60),
-                "telemetry_seconds": current_app.config.get("TELEMETRY_SECONDS", 60),
-                "inventory_seconds": current_app.config.get("INVENTORY_SECONDS", 21600),
-                "jobs_poll_seconds": current_app.config.get("JOBS_POLL_SECONDS", 60),
-            },
-        }), 200
+        return jsonify(
+            {
+                "status": "approved",
+                "device_id": device.device_id,
+                "credential_version": device.credential_version,
+                "config": {
+                    "heartbeat_seconds": current_app.config.get("HEARTBEAT_SECONDS", 60),
+                    "telemetry_seconds": current_app.config.get("TELEMETRY_SECONDS", 60),
+                    "inventory_seconds": current_app.config.get("INVENTORY_SECONDS", 21600),
+                    "jobs_poll_seconds": current_app.config.get("JOBS_POLL_SECONDS", 60),
+                },
+            }
+        ), 200
 
     if rec_req.status == "REJECTED":
         return jsonify({"status": "rejected", "device_id": device.device_id}), 200
@@ -268,22 +297,34 @@ def heartbeat():
             device_id=device.id,
             status=OsInstallationStatus.ACTIVE,
         ).all()
-        known_inst_ids = {os_inst.agent_instance_id for os_inst in active_os if os_inst.agent_instance_id}
-        known_os_ids = {os_inst.os_installation_id for os_inst in active_os if os_inst.os_installation_id}
+        known_inst_ids = {
+            os_inst.agent_instance_id for os_inst in active_os if os_inst.agent_instance_id
+        }
+        known_os_ids = {
+            os_inst.os_installation_id for os_inst in active_os if os_inst.os_installation_id
+        }
         known_all = known_inst_ids | known_os_ids
 
         target_os = None
         if os_inst_id:
-            target_os = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=os_inst_id).first()
+            target_os = OSInstallation.query.filter_by(
+                device_id=device.id, os_installation_id=os_inst_id
+            ).first()
         if not target_os and inst_id:
-            target_os = OSInstallation.query.filter_by(device_id=device.id, agent_instance_id=inst_id).first()
+            target_os = OSInstallation.query.filter_by(
+                device_id=device.id, agent_instance_id=inst_id
+            ).first()
         if target_os:
             target_os.last_seen = now
 
         if known_all and inst_id and inst_id not in known_all and os_inst_id not in known_all:
             dup_window = current_app.config.get("DUPLICATE_WINDOW_SECONDS", 120)
             if device.last_seen:
-                last_seen_dt = device.last_seen if device.last_seen.tzinfo else device.last_seen.replace(tzinfo=UTC)
+                last_seen_dt = (
+                    device.last_seen
+                    if device.last_seen.tzinfo
+                    else device.last_seen.replace(tzinfo=UTC)
+                )
                 if (now - last_seen_dt).total_seconds() <= dup_window:
                     # Duplicate device detected -> suspend device immediately
                     device.status = DeviceStatus.SUSPENDED
@@ -312,10 +353,12 @@ def heartbeat():
                         )
                     )
                     db.session.commit()
-                    return jsonify({
-                        "error": "device_suspended",
-                        "message": "Duplicate device identity detected. Endpoint suspended.",
-                    }), 403
+                    return jsonify(
+                        {
+                            "error": "device_suspended",
+                            "message": "Duplicate device identity detected. Endpoint suspended.",
+                        }
+                    ), 403
 
     # Recover OFFLINE device back to ACTIVE on valid heartbeat
     if device.status == DeviceStatus.OFFLINE:
@@ -325,26 +368,31 @@ def heartbeat():
     db.session.commit()
 
     from app.services.job_service import has_pending_jobs
+
     pending = has_pending_jobs(device.id)
 
-    return jsonify({
-        "server_time": int(now.timestamp()),
-        "config_version": 1,
-        "pending_jobs": pending,
-    }), 200
+    return jsonify(
+        {
+            "server_time": int(now.timestamp()),
+            "config_version": 1,
+            "pending_jobs": pending,
+        }
+    ), 200
 
 
 @agents_bp.route("/config", methods=["GET"])
 @require_device_auth
 def get_config():
     """Return control-plane configuration and collection intervals."""
-    return jsonify({
-        "heartbeat_seconds": current_app.config.get("HEARTBEAT_SECONDS", 60),
-        "telemetry_seconds": current_app.config.get("TELEMETRY_SECONDS", 60),
-        "inventory_seconds": current_app.config.get("INVENTORY_SECONDS", 21600),
-        "jobs_poll_seconds": current_app.config.get("JOBS_POLL_SECONDS", 60),
-        "config_version": 1,
-    }), 200
+    return jsonify(
+        {
+            "heartbeat_seconds": current_app.config.get("HEARTBEAT_SECONDS", 60),
+            "telemetry_seconds": current_app.config.get("TELEMETRY_SECONDS", 60),
+            "inventory_seconds": current_app.config.get("INVENTORY_SECONDS", 21600),
+            "jobs_poll_seconds": current_app.config.get("JOBS_POLL_SECONDS", 60),
+            "config_version": 1,
+        }
+    ), 200
 
 
 @agents_bp.route("/rotate-credential", methods=["POST"])
@@ -363,7 +411,12 @@ def rotate_credential():
 
     msg = f"rotate\n{device.device_id}\n{new_pub_key}\n{ts}".encode()
     if not verify(device.device_public_key, sig_by_old, msg):
-        return jsonify({"error": "invalid_rotation_signature", "message": "Old key signature verification failed"}), 400
+        return jsonify(
+            {
+                "error": "invalid_rotation_signature",
+                "message": "Old key signature verification failed",
+            }
+        ), 400
 
     # Advance credential version and store new public key
     old_ver = device.credential_version
@@ -371,6 +424,7 @@ def rotate_credential():
     device.credential_version = old_ver + 1
 
     from app.models.device import DeviceCredential
+
     now = datetime.now(UTC)
     DeviceCredential.query.filter_by(device_id=device.id, status="ACTIVE").update(
         {"status": "REVOKED", "revoked_at": now}
@@ -397,10 +451,12 @@ def rotate_credential():
     )
     db.session.commit()
 
-    return jsonify({
-        "status": "rotated",
-        "credential_version": device.credential_version,
-    }), 200
+    return jsonify(
+        {
+            "status": "rotated",
+            "credential_version": device.credential_version,
+        }
+    ), 200
 
 
 @agents_bp.route("/inventory", methods=["POST"])
@@ -412,12 +468,15 @@ def post_inventory():
     event_id = payload.get("event_id")
     if event_id:
         from app.services.idempotency_service import record_processed_event
+
         if not record_processed_event(device.id, event_id):
-            return jsonify({
-                "status": "inventory_updated",
-                "accepted": [],
-                "duplicates": [event_id],
-            }), 200
+            return jsonify(
+                {
+                    "status": "inventory_updated",
+                    "accepted": [],
+                    "duplicates": [event_id],
+                }
+            ), 200
 
     inv_data = payload.get("inventory") or payload
     os_data = payload.get("os")
@@ -425,6 +484,7 @@ def post_inventory():
     # Trigger reconciliation hook before updating current snapshot
     try:
         from app.services.identity_service import reconcile_device_inventory
+
         reconcile_device_inventory(device, inv_data, os_data)
     except (ImportError, AttributeError):
         pass
@@ -511,7 +571,9 @@ def post_inventory():
                 os_version=os_data.get("version", "Unknown"),
                 architecture=os_data.get("architecture", "Unknown"),
                 os_machine_id_hash=m_hash,
-                agent_instance_id=payload.get("agent_instance_id") or os_data.get("agent_instance_id") or "unknown",
+                agent_instance_id=payload.get("agent_instance_id")
+                or os_data.get("agent_instance_id")
+                or "unknown",
                 first_seen=now,
                 last_seen=now,
                 status=OsInstallationStatus.ACTIVE,
@@ -539,11 +601,13 @@ def post_inventory():
     device.last_seen = now
     db.session.commit()
 
-    return jsonify({
-        "status": "inventory_updated",
-        "accepted": [event_id] if event_id else [],
-        "duplicates": [],
-    }), 200
+    return jsonify(
+        {
+            "status": "inventory_updated",
+            "accepted": [event_id] if event_id else [],
+            "duplicates": [],
+        }
+    ), 200
 
 
 @agents_bp.route("/telemetry", methods=["POST"])
@@ -558,16 +622,20 @@ def post_telemetry():
         if isinstance(payload, list):
             samples = payload
         else:
-            return jsonify({"error": "invalid_payload", "message": "Expected 'samples' list in payload"}), 400
+            return jsonify(
+                {"error": "invalid_payload", "message": "Expected 'samples' list in payload"}
+            ), 400
 
     if not isinstance(samples, list):
         return jsonify({"error": "invalid_payload", "message": "'samples' must be a list"}), 400
 
     if len(samples) > 500:
-        return jsonify({
-            "error": "payload_too_large",
-            "message": f"Telemetry batch exceeds maximum limit of 500 samples (received {len(samples)})",
-        }), 413
+        return jsonify(
+            {
+                "error": "payload_too_large",
+                "message": f"Telemetry batch exceeds maximum limit of 500 samples (received {len(samples)})",
+            }
+        ), 413
 
     # Extract event_ids if present for idempotency deduplication
     sample_event_ids = [
@@ -578,23 +646,28 @@ def post_telemetry():
 
     if sample_event_ids:
         from app.services.idempotency_service import record_processed_events_batch
+
         accepted_ids, duplicate_ids = record_processed_events_batch(device.id, sample_event_ids)
         dup_set = set(duplicate_ids)
         samples_to_record = [
-            s for s in samples
+            s
+            for s in samples
             if not (isinstance(s, dict) and s.get("event_id") and s.get("event_id") in dup_set)
         ]
     else:
         samples_to_record = samples
 
     from app.services.telemetry_service import record_telemetry
+
     count = record_telemetry(device.id, samples_to_record)
-    return jsonify({
-        "status": "recorded",
-        "count": count,
-        "accepted": accepted_ids,
-        "duplicates": duplicate_ids,
-    }), 200
+    return jsonify(
+        {
+            "status": "recorded",
+            "count": count,
+            "accepted": accepted_ids,
+            "duplicates": duplicate_ids,
+        }
+    ), 200
 
 
 @agents_bp.route("/identity", methods=["POST"])
@@ -606,12 +679,15 @@ def post_identity():
     event_id = payload.get("event_id")
     if event_id:
         from app.services.idempotency_service import record_processed_event
+
         if not record_processed_event(device.id, event_id):
-            return jsonify({
-                "status": "identity_received",
-                "accepted": [],
-                "duplicates": [event_id],
-            }), 200
+            return jsonify(
+                {
+                    "status": "identity_received",
+                    "accepted": [],
+                    "duplicates": [event_id],
+                }
+            ), 200
 
     ev_data = payload.get("identity_evidence") or payload
 
@@ -639,15 +715,18 @@ def post_identity():
     # Trigger reconciliation hook if identity service is available
     try:
         from app.services.identity_service import reconcile_device_evidence
+
         reconcile_device_evidence(device, ev_data)
     except (ImportError, AttributeError):
         pass
 
-    return jsonify({
-        "status": "identity_received",
-        "accepted": [event_id] if event_id else [],
-        "duplicates": [],
-    }), 200
+    return jsonify(
+        {
+            "status": "identity_received",
+            "accepted": [event_id] if event_id else [],
+            "duplicates": [],
+        }
+    ), 200
 
 
 @agents_bp.route("/jobs", methods=["GET"])
@@ -659,17 +738,19 @@ def poll_jobs():
     from app.services.job_service import get_pending_jobs_for_device
 
     jobs = get_pending_jobs_for_device(device.id, mark_dispatched=True)
-    return jsonify({
-        "jobs": [
-            {
-                "id": j.id,
-                "job_type": j.job_type.value,
-                "payload": j.payload,
-                "expires_at": j.expires_at.isoformat() if j.expires_at else None,
-            }
-            for j in jobs
-        ]
-    }), 200
+    return jsonify(
+        {
+            "jobs": [
+                {
+                    "id": j.id,
+                    "job_type": j.job_type.value,
+                    "payload": j.payload,
+                    "expires_at": j.expires_at.isoformat() if j.expires_at else None,
+                }
+                for j in jobs
+            ]
+        }
+    ), 200
 
 
 @agents_bp.route("/jobs/<int:job_id>/result", methods=["POST"])
@@ -693,11 +774,31 @@ def post_job_result(job_id: int):
             result=result_data,
             error=error_msg,
         )
-        return jsonify({
-            "status": "recorded",
-            "job_id": job.id,
-            "job_status": job.status.value,
-        }), 200
+        return jsonify(
+            {
+                "status": "recorded",
+                "job_id": job.id,
+                "job_status": job.status.value,
+            }
+        ), 200
     except ValueError as exc:
         return jsonify({"error": "invalid_job", "message": str(exc)}), 400
 
+
+@agents_bp.route("/version-check", methods=["GET"])
+@enforce_policy
+def version_check():
+    """Report latest and minimum supported agent versions and release metadata."""
+    return jsonify(
+        {
+            "min_supported_agent_version": current_app.config.get(
+                "MIN_SUPPORTED_AGENT_VERSION", "0.1.0"
+            ),
+            "latest_agent_version": current_app.config.get("LATEST_AGENT_VERSION", "0.1.0"),
+            "download_url": current_app.config.get(
+                "AGENT_DOWNLOAD_URL", "https://releases.venuedesk.internal/agent/latest"
+            ),
+            "sha256": current_app.config.get("AGENT_RELEASE_SHA256", ""),
+            "signature": current_app.config.get("AGENT_RELEASE_SIGNATURE", ""),
+        }
+    ), 200

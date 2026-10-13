@@ -1,4 +1,5 @@
 """Telemetry and device event models."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, BigInteger, Column, DateTime, Float, ForeignKey, Index, Integer, String
@@ -15,13 +16,14 @@ def utc_now() -> datetime:
 
 class Telemetry(db.Model):
     """High-frequency device metrics time series."""
+
     __tablename__ = "telemetry"
-    __table_args__ = (
-        Index("idx_telemetry_device_timestamp", "device_id", "timestamp"),
-    )
+    __table_args__ = (Index("idx_telemetry_device_timestamp", "device_id", "timestamp"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(
+        Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     cpu_percent = Column(Float, nullable=False)
     memory_percent = Column(Float, nullable=False)
@@ -39,12 +41,18 @@ class Telemetry(db.Model):
 
 class DeviceEvent(db.Model):
     """Audited asynchronous device lifecycle and security events."""
+
     __tablename__ = "device_events"
+    __table_args__ = (Index("idx_device_events_device_occurred", "device_id", "occurred_at"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(
+        Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     event_type = Column(SQLEnum(DeviceEventType, native_enum=False), nullable=False, index=True)
-    severity = Column(SQLEnum(EventSeverity, native_enum=False), nullable=False, default=EventSeverity.INFO)
+    severity = Column(
+        SQLEnum(EventSeverity, native_enum=False), nullable=False, default=EventSeverity.INFO
+    )
     payload = Column(JSON, nullable=False, default=dict)
     occurred_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
@@ -56,6 +64,7 @@ class DeviceEvent(db.Model):
 
 class ProcessedEvent(db.Model):
     """Server-side idempotency record tracking processed event IDs per device."""
+
     __tablename__ = "processed_events"
     __table_args__ = (
         db.UniqueConstraint("device_id", "event_id", name="uq_processed_events_device_event"),
@@ -63,7 +72,8 @@ class ProcessedEvent(db.Model):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(
+        Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     event_id = Column(String(64), nullable=False, index=True)
     processed_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
-

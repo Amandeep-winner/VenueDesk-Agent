@@ -1,4 +1,5 @@
 """Centralized per-endpoint per-state access policy and enforcement."""
+
 import functools
 import logging
 import time
@@ -46,7 +47,9 @@ ENDPOINT_POLICY: dict[str, Policy] = {
     # Agent endpoints
     "agents.enroll": Policy(auth="token_or_unclaimed_flag", rate_limit="10/min"),
     "agents.recover": Policy(auth="none+evidence", rate_limit="10/min"),
-    "agents.recover_status": Policy(auth="device_or_query", states={DeviceStatus.PENDING_REVERIFICATION}),
+    "agents.recover_status": Policy(
+        auth="device_or_query", states={DeviceStatus.PENDING_REVERIFICATION}
+    ),
     "agents.heartbeat": Policy(auth="device", states=HEARTBEAT_STATES),
     "agents.get_config": Policy(auth="device", states=INVENTORY_IDENTITY_CONFIG_STATES),
     "agents.rotate_credential": Policy(auth="device", states=ROTATION_STATES),
@@ -55,21 +58,31 @@ ENDPOINT_POLICY: dict[str, Policy] = {
     "agents.post_identity": Policy(auth="device", states=INVENTORY_IDENTITY_CONFIG_STATES),
     "agents.poll_jobs": Policy(auth="device", states=JOBS_STATES),
     "agents.post_job_result": Policy(auth="device", states=JOBS_STATES),
-
+    "agents.version_check": Policy(auth="none"),
     # Admin endpoints
     "assets.generate_pairing_token_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "assets.revoke_pairing_token_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.approve_hardware_change_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.approve_recovery_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.create_device_job_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
-    "devices.get_device_jobs_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
+    "devices.get_device_jobs_endpoint": Policy(
+        auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}
+    ),
     "devices.pair_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.replace_endpoint_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
-    "devices.get_telemetry_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
+    "devices.get_telemetry_endpoint": Policy(
+        auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}
+    ),
     "devices.verify_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
-    "devices.create_os_enrollment_token_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
-    "devices.get_recovery_requests_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
-    "devices.get_unclaimed_devices_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}),
+    "devices.create_os_enrollment_token_endpoint": Policy(
+        auth="role", roles={UserRole.INFRA_ADMIN}
+    ),
+    "devices.get_recovery_requests_endpoint": Policy(
+        auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}
+    ),
+    "devices.get_unclaimed_devices_endpoint": Policy(
+        auth="role", roles={UserRole.INFRA_ADMIN, UserRole.INFRA_VIEWER}
+    ),
     "devices.suspend_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.unsuspend_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
     "devices.retire_device_endpoint": Policy(auth="role", roles={UserRole.INFRA_ADMIN}),
@@ -105,8 +118,15 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
     skew_limit = current_app.config.get("CLOCK_SKEW_SECONDS", 120)
     current_ts = int(time.time())
     if abs(current_ts - req_ts) > skew_limit:
-        logger.warning("Rejecting request from %s: clock skew %s exceeds %s", device_id, abs(current_ts - req_ts), skew_limit)
-        return jsonify({"error": "unauthorized", "message": "Timestamp out of allowable skew window"}), 401
+        logger.warning(
+            "Rejecting request from %s: clock skew %s exceeds %s",
+            device_id,
+            abs(current_ts - req_ts),
+            skew_limit,
+        )
+        return jsonify(
+            {"error": "unauthorized", "message": "Timestamp out of allowable skew window"}
+        ), 401
 
     # 3. Load device and check key version
     device = PhysicalDevice.query.filter_by(device_id=device_id).first()
@@ -120,6 +140,7 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
         return jsonify({"error": "unauthorized", "message": "Invalid key version format"}), 401
 
     from app.models.device import DeviceCredential
+
     active_creds = DeviceCredential.query.filter_by(
         device_id=device.id,
         status="ACTIVE",
@@ -130,7 +151,12 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
         valid_versions.update(c.credential_version for c in active_creds)
 
     if key_version not in valid_versions:
-        logger.warning("Rejecting request from %s: key version %s not in %s", device_id, key_version, valid_versions)
+        logger.warning(
+            "Rejecting request from %s: key version %s not in %s",
+            device_id,
+            key_version,
+            valid_versions,
+        )
         return jsonify({"error": "unauthorized", "message": "Key version mismatch"}), 401
 
     # 4. Verify Ed25519 signature
@@ -146,12 +172,18 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
                 verified = True
                 break
 
-    if not verified and key_version == device.credential_version and verify(device.device_public_key, sig_b64, msg):
+    if (
+        not verified
+        and key_version == device.credential_version
+        and verify(device.device_public_key, sig_b64, msg)
+    ):
         verified = True
 
     if not verified:
         logger.warning("Rejecting request from %s: signature verification failed", device_id)
-        return jsonify({"error": "unauthorized", "message": "Cryptographic signature verification failed"}), 401
+        return jsonify(
+            {"error": "unauthorized", "message": "Cryptographic signature verification failed"}
+        ), 401
 
     # 5. Atomically consume nonce
     if not check_and_record_nonce(device.device_id, nonce, skew_seconds=skew_limit):
@@ -160,7 +192,12 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
 
     # 6. Apply state policy
     if policy.states and device.status not in policy.states:
-        logger.warning("Rejecting request from %s: status %s not allowed for %s", device_id, device.status.value, request.endpoint)
+        logger.warning(
+            "Rejecting request from %s: status %s not allowed for %s",
+            device_id,
+            device.status.value,
+            request.endpoint,
+        )
         return jsonify({"error": "device_blocked", "message": "Device is blocked"}), 403
 
     # 7. Execute operation
@@ -170,13 +207,16 @@ def _execute_device_pipeline(f: Any, policy: Policy, *args: Any, **kwargs: Any) 
 
 def enforce_policy(f: Any) -> Any:
     """Decorator requiring request to comply with the endpoint's registered policy."""
+
     @functools.wraps(f)
     def decorated(*args: Any, **kwargs: Any) -> Any:
         endpoint = request.endpoint
         policy = ENDPOINT_POLICY.get(endpoint) or getattr(f, "_policy", None)
         if not policy:
             logger.warning("Unregistered endpoint %s accessed; failing closed", endpoint)
-            return jsonify({"error": "unauthorized", "message": "No authorization policy registered"}), 401
+            return jsonify(
+                {"error": "unauthorized", "message": "No authorization policy registered"}
+            ), 401
 
         if policy.auth == "device":
             return _execute_device_pipeline(f, policy, *args, **kwargs)
@@ -194,7 +234,12 @@ def enforce_policy(f: Any) -> Any:
                 return jsonify({"error": "unauthorized", "message": "Authentication required"}), 401
 
             if policy.roles and user.role not in policy.roles:
-                return jsonify({"error": "forbidden", "message": f"Requires role: {[r.value for r in policy.roles]}"}), 403
+                return jsonify(
+                    {
+                        "error": "forbidden",
+                        "message": f"Requires role: {[r.value for r in policy.roles]}",
+                    }
+                ), 403
 
             g.current_user = user
             return f(*args, **kwargs)

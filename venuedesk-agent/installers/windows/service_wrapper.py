@@ -1,4 +1,5 @@
 """Windows Service wrapper for VenueDesk Agent."""
+
 import logging
 import os
 import sys
@@ -60,6 +61,7 @@ except ImportError:
             config_path = Path("config.toml")
 
         from agent.config import AgentConfig
+
         cfg = AgentConfig.load(config_path)
         logger.info("Starting VenueDesk Agent background runner with state dir: %s", cfg.state_dir)
         while True:

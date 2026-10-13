@@ -123,16 +123,28 @@ Create `app/security/policy.py` with a **single registry**:
 ```python
 ENDPOINT_POLICY = {
     # endpoint (blueprint.func)       auth kind            allowed device states / roles
-    "agents.enroll":      Policy(auth="token_or_unclaimed_flag", rate_limit="10/min"),
-    "agents.recover":     Policy(auth="none+evidence",           rate_limit="10/min"),
-    "agents.heartbeat":   Policy(auth="device", states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION}),
-    "agents.telemetry":   Policy(auth="device", states={ACTIVE, OFFLINE}),
-    "agents.inventory":   Policy(auth="device", states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION}),
-    "agents.identity":    Policy(auth="device", states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION}),
-    "agents.config":      Policy(auth="device", states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION}),
-    "agents.jobs":        Policy(auth="device", states={ACTIVE}),
-    "agents.job_result":  Policy(auth="device", states={ACTIVE}),
-    "agents.rotate":      Policy(auth="device", states={ACTIVE, PENDING_REVERIFICATION}),
+    "agents.enroll": Policy(auth="token_or_unclaimed_flag", rate_limit="10/min"),
+    "agents.recover": Policy(auth="none+evidence", rate_limit="10/min"),
+    "agents.heartbeat": Policy(
+        auth="device",
+        states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION},
+    ),
+    "agents.telemetry": Policy(auth="device", states={ACTIVE, OFFLINE}),
+    "agents.inventory": Policy(
+        auth="device",
+        states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION},
+    ),
+    "agents.identity": Policy(
+        auth="device",
+        states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION},
+    ),
+    "agents.config": Policy(
+        auth="device",
+        states={ACTIVE, OFFLINE, PENDING_VERIFICATION, PENDING_REVERIFICATION},
+    ),
+    "agents.jobs": Policy(auth="device", states={ACTIVE}),
+    "agents.job_result": Policy(auth="device", states={ACTIVE}),
+    "agents.rotate": Policy(auth="device", states={ACTIVE, PENDING_REVERIFICATION}),
     "agents.recover_status": Policy(auth="device", states={PENDING_REVERIFICATION}),
     # admin endpoints: auth="session", roles={"infra_admin"} or {"infra_admin","infra_viewer"}
 }

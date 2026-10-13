@@ -1,4 +1,5 @@
 """Authenticated HTTP client signing every request with the agent's Ed25519 key."""
+
 import json
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,9 @@ class AuthenticatedClient:
         self.config = config
         self.server_url = config.server_url.rstrip("/")
         if self.server_url.startswith("http://") and not config.allow_insecure_dev:
-            raise ValueError("Insecure HTTP server URLs are rejected unless allow_insecure_dev is true.")
+            raise ValueError(
+                "Insecure HTTP server URLs are rejected unless allow_insecure_dev is true."
+            )
 
         db_path = Path(config.state_dir) / "agent_state.db"
         self.db = db or AgentDatabase(db_path)
@@ -116,6 +119,7 @@ class AuthenticatedClient:
             raise RuntimeError("Cannot rotate credential: agent is not enrolled.")
 
         import time
+
         ts = int(time.time())
         rot_msg = f"rotate\n{device_id}\n{new_pub_b64}\n{ts}".encode()
         old_sig = sign_message(old_key, rot_msg)

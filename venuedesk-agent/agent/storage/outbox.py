@@ -1,4 +1,5 @@
 """Agent offline outbox implementing priority queue, TTL, pressure shedding, and ordered flush."""
+
 import json
 import logging
 import os
@@ -14,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Priority constants
 PRIORITY_IDENTITY_EVENT = 0  # Highest priority: never dropped under pressure unless TTL expired
-PRIORITY_INVENTORY = 1       # Medium priority
-PRIORITY_TELEMETRY = 2       # Lowest priority: dropped first under buffer pressure
+PRIORITY_INVENTORY = 1  # Medium priority
+PRIORITY_TELEMETRY = 2  # Lowest priority: dropped first under buffer pressure
 
 # Status constants
 STATUS_PENDING = "PENDING"
@@ -40,6 +41,7 @@ def _redact_message(msg: str) -> str:
 @dataclass
 class OutboxItem:
     """Outbox queued item representation."""
+
     id: int
     priority: int
     topic: str
@@ -55,6 +57,7 @@ class OutboxItem:
 
 class _DbConnectionWrapper:
     """Wrapper ensuring SQLite connection is closed on context exit while managing transactions."""
+
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
 
@@ -126,7 +129,9 @@ class Outbox:
         """Move corrupted database aside and reinitialize a clean store."""
         ts = int(time.time() * 1000)
         corrupt_path = self.db_path.parent / f"{self.db_path.name}.corrupt.{ts}"
-        logger.error("Outbox SQLite database corrupt! Moving to %s and resetting outbox", corrupt_path)
+        logger.error(
+            "Outbox SQLite database corrupt! Moving to %s and resetting outbox", corrupt_path
+        )
         try:
             if self.db_path.exists():
                 os.replace(self.db_path, corrupt_path)
@@ -183,9 +188,13 @@ class Outbox:
                 if "event_id" not in cols:
                     conn.execute("ALTER TABLE outbox ADD COLUMN event_id TEXT")
                 if "kind" not in cols:
-                    conn.execute("ALTER TABLE outbox ADD COLUMN kind TEXT NOT NULL DEFAULT 'telemetry'")
+                    conn.execute(
+                        "ALTER TABLE outbox ADD COLUMN kind TEXT NOT NULL DEFAULT 'telemetry'"
+                    )
                 if "status" not in cols:
-                    conn.execute("ALTER TABLE outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING'")
+                    conn.execute(
+                        "ALTER TABLE outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING'"
+                    )
                 if "next_attempt_at" not in cols:
                     conn.execute("ALTER TABLE outbox ADD COLUMN next_attempt_at REAL DEFAULT 0.0")
                 if "last_error" not in cols:
@@ -219,7 +228,9 @@ class Outbox:
                 conn.commit()
                 reverted = cur.rowcount
                 if reverted > 0:
-                    logger.info("Crash recovery: reverted %d stale in-flight events to PENDING", reverted)
+                    logger.info(
+                        "Crash recovery: reverted %d stale in-flight events to PENDING", reverted
+                    )
                 return reverted
         except sqlite3.DatabaseError as exc:
             if "malformed" in str(exc).lower() or "not a database" in str(exc).lower():
@@ -257,7 +268,9 @@ class Outbox:
         """Return total number of non-delivered items currently in outbox."""
         try:
             with self._get_connection() as conn:
-                cur = conn.execute("SELECT count(*) FROM outbox WHERE status != ?", (STATUS_DELIVERED,))
+                cur = conn.execute(
+                    "SELECT count(*) FROM outbox WHERE status != ?", (STATUS_DELIVERED,)
+                )
                 return int(cur.fetchone()[0]) + len(self._in_memory_queue)
         except sqlite3.DatabaseError as exc:
             if "malformed" in str(exc).lower() or "not a database" in str(exc).lower():
@@ -310,7 +323,11 @@ class Outbox:
         # Ensure event_id is preserved inside payload dict
         if isinstance(payload, dict):
             payload.setdefault("event_id", event_id)
-            if topic == "telemetry" and "samples" in payload and isinstance(payload["samples"], list):
+            if (
+                topic == "telemetry"
+                and "samples" in payload
+                and isinstance(payload["samples"], list)
+            ):
                 for s in payload["samples"]:
                     if isinstance(s, dict) and "event_id" not in s:
                         s["event_id"] = str(uuid.uuid4())
@@ -319,7 +336,9 @@ class Outbox:
 
         try:
             with self._get_connection() as conn:
-                cur = conn.execute("SELECT count(*) FROM outbox WHERE status != ?", (STATUS_DELIVERED,))
+                cur = conn.execute(
+                    "SELECT count(*) FROM outbox WHERE status != ?", (STATUS_DELIVERED,)
+                )
                 total = cur.fetchone()[0]
                 queue_bytes = self._get_queue_bytes()
 
@@ -344,7 +363,9 @@ class Outbox:
                     else:
                         # Queue consists entirely of priority 0 items
                         if priority > 0:
-                            logger.warning("Outbox full with priority 0 items; dropping lower priority enqueue")
+                            logger.warning(
+                                "Outbox full with priority 0 items; dropping lower priority enqueue"
+                            )
                             self.dropped_events_count += 1
                             return None
 
@@ -362,8 +383,14 @@ class Outbox:
 
         except sqlite3.OperationalError as exc:
             err_msg = str(exc).lower()
-            if "disk is full" in err_msg or "disk full" in err_msg or "database or disk is full" in err_msg:
-                logger.warning("Disk full detected! Degrading to in-memory queue for priority-0 items only")
+            if (
+                "disk is full" in err_msg
+                or "disk full" in err_msg
+                or "database or disk is full" in err_msg
+            ):
+                logger.warning(
+                    "Disk full detected! Degrading to in-memory queue for priority-0 items only"
+                )
                 if priority == PRIORITY_IDENTITY_EVENT:
                     mem_item = OutboxItem(
                         id=-(len(self._in_memory_queue) + 1),
@@ -395,7 +422,9 @@ class Outbox:
             if item.status == STATUS_PENDING or include_in_flight:
                 items.append(item)
 
-        status_clause = "status IN ('PENDING', 'IN_FLIGHT')" if include_in_flight else "status = 'PENDING'"
+        status_clause = (
+            "status IN ('PENDING', 'IN_FLIGHT')" if include_in_flight else "status = 'PENDING'"
+        )
         try:
             with self._get_connection() as conn:
                 cur = conn.execute(
@@ -444,11 +473,16 @@ class Outbox:
             updated = 0
             if int_ids:
                 ph = ",".join("?" for _ in int_ids)
-                cur = conn.execute(f"UPDATE outbox SET status = ? WHERE id IN ({ph})", [STATUS_IN_FLIGHT, *int_ids])
+                cur = conn.execute(
+                    f"UPDATE outbox SET status = ? WHERE id IN ({ph})", [STATUS_IN_FLIGHT, *int_ids]
+                )
                 updated += cur.rowcount
             if str_ids:
                 ph = ",".join("?" for _ in str_ids)
-                cur = conn.execute(f"UPDATE outbox SET status = ? WHERE event_id IN ({ph})", [STATUS_IN_FLIGHT, *str_ids])
+                cur = conn.execute(
+                    f"UPDATE outbox SET status = ? WHERE event_id IN ({ph})",
+                    [STATUS_IN_FLIGHT, *str_ids],
+                )
                 updated += cur.rowcount
             conn.commit()
             return updated
@@ -461,7 +495,11 @@ class Outbox:
         str_ids = [x for x in item_ids if isinstance(x, str)]
 
         # Remove from in-memory fallback if present
-        self._in_memory_queue = [it for it in self._in_memory_queue if it.id not in int_ids and it.event_id not in str_ids]
+        self._in_memory_queue = [
+            it
+            for it in self._in_memory_queue
+            if it.id not in int_ids and it.event_id not in str_ids
+        ]
 
         with self._get_connection() as conn:
             updated = 0
@@ -559,7 +597,11 @@ class Outbox:
         int_ids = [x for x in item_ids if isinstance(x, int)]
         str_ids = [x for x in item_ids if isinstance(x, str)]
 
-        self._in_memory_queue = [it for it in self._in_memory_queue if it.id not in int_ids and it.event_id not in str_ids]
+        self._in_memory_queue = [
+            it
+            for it in self._in_memory_queue
+            if it.id not in int_ids and it.event_id not in str_ids
+        ]
 
         with self._get_connection() as conn:
             deleted = 0
@@ -595,19 +637,27 @@ class Outbox:
                 if item.topic == "telemetry":
                     # Batch contiguous telemetry samples up to 500
                     telemetry_batch: list[OutboxItem] = []
-                    while idx < len(items) and items[idx].topic == "telemetry" and len(telemetry_batch) < 500:
+                    while (
+                        idx < len(items)
+                        and items[idx].topic == "telemetry"
+                        and len(telemetry_batch) < 500
+                    ):
                         telemetry_batch.append(items[idx])
                         idx += 1
 
                     samples = []
                     for t_item in telemetry_batch:
-                        if "samples" in t_item.payload and isinstance(t_item.payload["samples"], list):
+                        if "samples" in t_item.payload and isinstance(
+                            t_item.payload["samples"], list
+                        ):
                             samples.extend(t_item.payload["samples"])
                         else:
                             samples.append(t_item.payload)
 
                     try:
-                        resp = client.post("/api/v1/agents/telemetry", json_data={"samples": samples})
+                        resp = client.post(
+                            "/api/v1/agents/telemetry", json_data={"samples": samples}
+                        )
                         if resp.status_code == 200:
                             ids = [t.id for t in telemetry_batch]
                             self.delete(ids)
@@ -615,11 +665,16 @@ class Outbox:
                         elif resp.status_code in (400, 422):
                             ids = [t.id for t in telemetry_batch]
                             self.mark_failed_permanent(ids, error=f"HTTP {resp.status_code}")
-                            logger.error("Telemetry payload rejected with HTTP %s: permanent failure", resp.status_code)
+                            logger.error(
+                                "Telemetry payload rejected with HTTP %s: permanent failure",
+                                resp.status_code,
+                            )
                             return flushed_count
                         else:
                             self.increment_attempts([t.id for t in telemetry_batch])
-                            logger.warning("Telemetry batch flush failed with status %s", resp.status_code)
+                            logger.warning(
+                                "Telemetry batch flush failed with status %s", resp.status_code
+                            )
                             return flushed_count
                     except (OSError, RuntimeError, ValueError) as exc:
                         logger.warning("Telemetry flush aborted due to connection failure: %s", exc)
@@ -633,11 +688,16 @@ class Outbox:
                             flushed_count += 1
                         elif resp.status_code in (400, 422):
                             self.mark_failed_permanent([item.id], error=f"HTTP {resp.status_code}")
-                            logger.error("Inventory rejected with HTTP %s: permanent failure", resp.status_code)
+                            logger.error(
+                                "Inventory rejected with HTTP %s: permanent failure",
+                                resp.status_code,
+                            )
                             return flushed_count
                         else:
                             self.increment_attempts([item.id])
-                            logger.warning("Inventory flush failed with status %s", resp.status_code)
+                            logger.warning(
+                                "Inventory flush failed with status %s", resp.status_code
+                            )
                             return flushed_count
                     except (OSError, RuntimeError, ValueError) as exc:
                         logger.warning("Inventory flush aborted due to connection failure: %s", exc)
@@ -652,7 +712,10 @@ class Outbox:
                             flushed_count += 1
                         elif resp.status_code in (400, 422):
                             self.mark_failed_permanent([item.id], error=f"HTTP {resp.status_code}")
-                            logger.error("Identity rejected with HTTP %s: permanent failure", resp.status_code)
+                            logger.error(
+                                "Identity rejected with HTTP %s: permanent failure",
+                                resp.status_code,
+                            )
                             return flushed_count
                         else:
                             self.increment_attempts([item.id])
@@ -675,7 +738,9 @@ class Outbox:
                             return flushed_count
                         elif resp.status_code in (404, 410) and item.topic == "jobs":
                             self.delete([item.id])
-                            logger.info("Dropping stale job item %s with HTTP %s", item.id, resp.status_code)
+                            logger.info(
+                                "Dropping stale job item %s with HTTP %s", item.id, resp.status_code
+                            )
                         else:
                             self.increment_attempts([item.id])
                             return flushed_count

@@ -1,4 +1,5 @@
 """Unit tests for agent SQLite local database and identity store."""
+
 from agent.identity.device_id import IdentityStore
 from agent.storage.database import AgentDatabase
 

@@ -1,4 +1,5 @@
 """Unit tests for agent-side recovery client and CLI command."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,9 +69,11 @@ def test_recover_agent_with_wait_polling_success(tmp_path):
         "credential_version": 2,
     }
 
-    with patch("httpx.Client.post", return_value=fake_post_resp), \
-         patch("httpx.Client.get", side_effect=[fake_poll_pending, fake_poll_approved]), \
-         patch("time.sleep"):
+    with (
+        patch("httpx.Client.post", return_value=fake_post_resp),
+        patch("httpx.Client.get", side_effect=[fake_poll_pending, fake_poll_approved]),
+        patch("time.sleep"),
+    ):
         res = recover_agent(cfg, wait_for_approval=True, poll_timeout_seconds=5, poll_interval=0.01)
         assert res["status"] == "approved"
         assert res["credential_version"] == 2

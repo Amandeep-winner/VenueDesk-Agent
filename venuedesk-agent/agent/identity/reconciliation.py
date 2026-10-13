@@ -1,4 +1,5 @@
 """Agent-side identity and hardware evidence diffing and reconciliation."""
+
 from typing import Any
 
 from agent.identity.evidence import IdentityEvidence
@@ -12,8 +13,12 @@ def diff_evidence(
     if not old_evidence:
         return []
 
-    old_dict = old_evidence.to_dict() if isinstance(old_evidence, IdentityEvidence) else old_evidence
-    new_dict = new_evidence.to_dict() if isinstance(new_evidence, IdentityEvidence) else new_evidence
+    old_dict = (
+        old_evidence.to_dict() if isinstance(old_evidence, IdentityEvidence) else old_evidence
+    )
+    new_dict = (
+        new_evidence.to_dict() if isinstance(new_evidence, IdentityEvidence) else new_evidence
+    )
 
     changed = []
     comparable_fields = [
@@ -85,9 +90,21 @@ def check_for_local_changes(
         ev_diff = diff_evidence(last_sent_evidence, current_evidence)
         if ev_diff:
             return True
-        old_dict = last_sent_evidence.to_dict() if hasattr(last_sent_evidence, "to_dict") else (last_sent_evidence or {})
-        new_dict = current_evidence.to_dict() if hasattr(current_evidence, "to_dict") else (current_evidence or {})
-        if old_dict.get("fingerprint") and new_dict.get("fingerprint") and old_dict["fingerprint"] != new_dict["fingerprint"]:
+        old_dict = (
+            last_sent_evidence.to_dict()
+            if hasattr(last_sent_evidence, "to_dict")
+            else (last_sent_evidence or {})
+        )
+        new_dict = (
+            current_evidence.to_dict()
+            if hasattr(current_evidence, "to_dict")
+            else (current_evidence or {})
+        )
+        if (
+            old_dict.get("fingerprint")
+            and new_dict.get("fingerprint")
+            and old_dict["fingerprint"] != new_dict["fingerprint"]
+        ):
             return True
 
     if last_sent_inventory:
@@ -96,4 +113,3 @@ def check_for_local_changes(
             return True
 
     return False
-

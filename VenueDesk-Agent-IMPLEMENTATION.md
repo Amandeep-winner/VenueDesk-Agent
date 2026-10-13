@@ -227,14 +227,16 @@ Severity map is configurable (`IDENTITY_SEVERITY_POLICY` JSON in config). A chan
 Implement exactly (spec §37), returning an enum `IdentityDecision {SAME_DEVICE, UNKNOWN_DEVICE, PENDING_REVERIFICATION, AMBIGUOUS, MANUAL_VERIFICATION}`:
 ```python
 def determine_device_identity(obs):
-    if obs.valid_signature_for_active_device:        # cryptographic continuity
+    if obs.valid_signature_for_active_device:  # cryptographic continuity
         return SAME_DEVICE
-    candidates = find_candidates_by_evidence(obs)    # strong anchors first, then supporting
+    candidates = find_candidates_by_evidence(
+        obs
+    )  # strong anchors first, then supporting
     if not candidates:
         return UNKNOWN_DEVICE
     if len(candidates) > 1:
         return AMBIGUOUS
-    if evidence_is_strong(candidates[0], obs):       # ≥2 strong anchors match
+    if evidence_is_strong(candidates[0], obs):  # ≥2 strong anchors match
         return PENDING_REVERIFICATION
     return MANUAL_VERIFICATION
 ```
@@ -411,13 +413,19 @@ import hashlib, base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 
-def canonical_string(method: str, path_with_query: str, ts: str, nonce: str, body: bytes) -> bytes:
+
+def canonical_string(
+    method: str, path_with_query: str, ts: str, nonce: str, body: bytes
+) -> bytes:
     body_hash = hashlib.sha256(body).hexdigest()
     return "\n".join([method.upper(), path_with_query, ts, nonce, body_hash]).encode()
 
+
 def verify(pub_b64: str, sig_b64: str, msg: bytes) -> bool:
     try:
-        Ed25519PublicKey.from_public_bytes(base64.b64decode(pub_b64)).verify(base64.b64decode(sig_b64), msg)
+        Ed25519PublicKey.from_public_bytes(base64.b64decode(pub_b64)).verify(
+            base64.b64decode(sig_b64), msg
+        )
         return True
     except (InvalidSignature, ValueError):
         return False
@@ -426,18 +434,47 @@ def verify(pub_b64: str, sig_b64: str, msg: bytes) -> bool:
 ```python
 # identity/fingerprint.py
 import json, hashlib, hmac
-PLACEHOLDERS = {"", "none", "unknown", "default string", "to be filled by o.e.m.", "not specified", "0"}
+
+PLACEHOLDERS = {
+    "",
+    "none",
+    "unknown",
+    "default string",
+    "to be filled by o.e.m.",
+    "not specified",
+    "0",
+}
+
+
 def norm(v):
-    if v is None: return None
+    if v is None:
+        return None
     s = " ".join(str(v).strip().lower().split())
-    if s in PLACEHOLDERS or set(s) <= {"0", "-"} or set(s) <= {"f", "-"}: return None
+    if s in PLACEHOLDERS or set(s) <= {"0", "-"} or set(s) <= {"f", "-"}:
+        return None
     return s
-def norm_list(items): return sorted({n for n in map(norm, items or []) if n})
+
+
+def norm_list(items):
+    return sorted({n for n in map(norm, items or []) if n})
+
+
 def fingerprint(ev: dict, version: int = 1) -> str:
-    canon = {"v": version, "machine_uuid": norm(ev.get("machine_uuid")), "bios_serial": norm(ev.get("bios_serial")),
-             "motherboard_serial": norm(ev.get("motherboard_serial")), "cpu": norm(ev.get("cpu")),
-             "gpus": norm_list(ev.get("gpus")), "disks": norm_list(ev.get("disks")), "nics": norm_list(ev.get("nics"))}
-    return hashlib.sha256(json.dumps(canon, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    canon = {
+        "v": version,
+        "machine_uuid": norm(ev.get("machine_uuid")),
+        "bios_serial": norm(ev.get("bios_serial")),
+        "motherboard_serial": norm(ev.get("motherboard_serial")),
+        "cpu": norm(ev.get("cpu")),
+        "gpus": norm_list(ev.get("gpus")),
+        "disks": norm_list(ev.get("disks")),
+        "nics": norm_list(ev.get("nics")),
+    }
+    return hashlib.sha256(
+        json.dumps(canon, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def field_hash(salt: bytes, value) -> str | None:
     n = norm(value)
     return hmac.new(salt, n.encode(), hashlib.sha256).hexdigest() if n else None

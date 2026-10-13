@@ -1,4 +1,5 @@
 """Enrollment token model."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
@@ -15,22 +16,29 @@ def utc_now() -> datetime:
 
 class EnrollmentToken(db.Model):
     """Single-use, short-lived, asset-scoped or device-scoped pairing token."""
+
     __tablename__ = "enrollment_tokens"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     scope = Column(SQLEnum(TokenScope, native_enum=False), nullable=False, default=TokenScope.ASSET)
-    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=True, index=True)
-    device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=True, index=True)
+    asset_id = Column(
+        Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    device_id = Column(
+        Integer, ForeignKey("physical_devices.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     token_hash = Column(String(64), unique=True, nullable=False, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
-    used_by_device_id = Column(Integer, ForeignKey("physical_devices.id", ondelete="SET NULL"), nullable=True)
+    used_by_device_id = Column(
+        Integer, ForeignKey("physical_devices.id", ondelete="SET NULL"), nullable=True
+    )
     created_by = Column(String(128), nullable=False, default="admin")
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(
         SQLEnum(EnrollmentTokenStatus, native_enum=False),
         nullable=False,
-        default=EnrollmentTokenStatus.ACTIVE
+        default=EnrollmentTokenStatus.ACTIVE,
     )
 
     asset = db.relationship("Asset", back_populates="tokens")

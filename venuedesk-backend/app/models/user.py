@@ -1,4 +1,5 @@
 """User account model for admin authentication and role-based access control."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Integer, String
@@ -16,15 +17,14 @@ def utc_now() -> datetime:
 
 class User(db.Model):
     """Administrative and operator user accounts."""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(64), unique=True, nullable=False, index=True)
     password_hash = Column(String(256), nullable=False)
     role = Column(
-        SQLEnum(UserRole, native_enum=False),
-        nullable=False,
-        default=UserRole.INFRA_VIEWER
+        SQLEnum(UserRole, native_enum=False), nullable=False, default=UserRole.INFRA_VIEWER
     )
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 

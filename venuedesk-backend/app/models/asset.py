@@ -1,4 +1,5 @@
 """Asset models and race-safe asset identifier generator."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, select
@@ -15,6 +16,7 @@ def utc_now() -> datetime:
 
 class AssetSequence(db.Model):
     """Sequence counter for generating sequential zero-padded asset IDs."""
+
     __tablename__ = "asset_sequences"
 
     id = Column(Integer, primary_key=True)
@@ -23,12 +25,15 @@ class AssetSequence(db.Model):
 
 class Asset(db.Model):
     """Institutional physical or virtual IT asset."""
+
     __tablename__ = "assets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     asset_id = Column(String(32), unique=True, nullable=False, index=True)
     asset_tag = Column(String(64), unique=True, nullable=True, index=True)
-    asset_type = Column(SQLEnum(AssetType, native_enum=False), nullable=False, default=AssetType.DESKTOP)
+    asset_type = Column(
+        SQLEnum(AssetType, native_enum=False), nullable=False, default=AssetType.DESKTOP
+    )
     department_id = Column(String(64), nullable=True)
     building_id = Column(String(64), nullable=True)
     room_id = Column(String(64), nullable=True)
@@ -40,27 +45,27 @@ class Asset(db.Model):
     lifecycle_status = Column(
         SQLEnum(AssetLifecycleStatus, native_enum=False),
         nullable=False,
-        default=AssetLifecycleStatus.DRAFT
+        default=AssetLifecycleStatus.DRAFT,
     )
     verification_status = Column(
         SQLEnum(AssetVerificationStatus, native_enum=False),
         nullable=False,
-        default=AssetVerificationStatus.UNVERIFIED
+        default=AssetVerificationStatus.UNVERIFIED,
     )
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
 
     links = db.relationship("AssetDeviceLink", back_populates="asset", cascade="all, delete-orphan")
-    tokens = db.relationship("EnrollmentToken", back_populates="asset", cascade="all, delete-orphan")
+    tokens = db.relationship(
+        "EnrollmentToken", back_populates="asset", cascade="all, delete-orphan"
+    )
 
 
 def generate_next_asset_id(session=None) -> str:
     """Generate next race-safe sequential asset ID in VD-ASSET-000001 format."""
     sess = session or db.session
-    seq = sess.execute(
-        select(AssetSequence).with_for_update()
-    ).scalar_one_or_none()
+    seq = sess.execute(select(AssetSequence).with_for_update()).scalar_one_or_none()
 
     if seq is None:
         seq = AssetSequence(id=1, next_val=1)

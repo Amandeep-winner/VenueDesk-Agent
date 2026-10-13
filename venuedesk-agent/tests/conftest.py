@@ -1,4 +1,5 @@
 """Test fixtures for VenueDesk Agent."""
+
 import pytest
 
 from agent.config import AgentConfig
@@ -10,5 +11,5 @@ def default_config(tmp_path):
     return AgentConfig(
         server_url="http://127.0.0.1:5001",
         state_dir=str(tmp_path / "agent_state"),
-        allow_insecure_dev=True
+        allow_insecure_dev=True,
     )

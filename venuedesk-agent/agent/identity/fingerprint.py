@@ -1,4 +1,5 @@
 """Hardware identity canonicalization, HMAC hashing, and versioned SHA-256 fingerprinting."""
+
 import hashlib
 import hmac
 import json
@@ -84,6 +85,7 @@ from enum import Enum
 
 class FieldMatchResult(str, Enum):
     """Tri-state result for hardware field comparison."""
+
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
     UNKNOWN = "UNKNOWN"

@@ -1,4 +1,5 @@
 """Nonce validation and replay defense."""
+
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +32,8 @@ def check_and_record_nonce(device_id: str, nonce: str, skew_seconds: int = 120) 
 def purge_expired_nonces() -> int:
     """Purge nonces that have passed their expiration timestamp."""
     now = datetime.now(UTC)
-    result = RequestNonce.query.filter(RequestNonce.expires_at < now).delete(synchronize_session=False)
+    result = RequestNonce.query.filter(RequestNonce.expires_at < now).delete(
+        synchronize_session=False
+    )
     db.session.flush()
     return result

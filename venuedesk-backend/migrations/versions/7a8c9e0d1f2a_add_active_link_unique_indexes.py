@@ -4,6 +4,7 @@ Revision ID: 7a8c9e0d1f2a
 Revises: 5e2bb272925c
 Create Date: 2026-10-14 01:52:00.000000
 """
+
 from alembic import op
 from sqlalchemy import text
 
@@ -40,7 +41,9 @@ def upgrade():
             msg.append(f"  Asset ID {row[0]} has {row[1]} active links")
         for row in device_dups:
             msg.append(f"  Device ID {row[0]} has {row[1]} active links")
-        msg.append("Please run tools/find_duplicate_links.py and follow docs/RUNBOOK.md to clean them up.")
+        msg.append(
+            "Please run tools/find_duplicate_links.py and follow docs/RUNBOOK.md to clean them up."
+        )
         raise RuntimeError("\n".join(msg))
 
     # 2. Create partial unique indexes

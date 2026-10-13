@@ -1,4 +1,5 @@
 """Comprehensive unit tests for agent offline outbox queue."""
+
 import time
 from unittest.mock import MagicMock
 
@@ -74,8 +75,8 @@ def test_outbox_pressure_sheds_lowest_priority_first(tmp_path):
     box = Outbox(db_file, max_items=3)
 
     box.enqueue(PRIORITY_IDENTITY_EVENT, "identity", {"device": "d1"})  # prio 0
-    box.enqueue(PRIORITY_INVENTORY, "inventory", {"host": "h1"})        # prio 1
-    box.enqueue(PRIORITY_TELEMETRY, "telemetry", {"cpu": 10})           # prio 2
+    box.enqueue(PRIORITY_INVENTORY, "inventory", {"host": "h1"})  # prio 1
+    box.enqueue(PRIORITY_TELEMETRY, "telemetry", {"cpu": 10})  # prio 2
 
     assert box.count() == 3
 
@@ -170,7 +171,9 @@ def test_simulate_server_down_two_minutes_queue_drains_no_loss_priority_zero(tmp
     # Agent queues priority 0, 1, and 2 items while offline
     p0_ids = []
     for i in range(3):
-        id_ = box.enqueue(PRIORITY_IDENTITY_EVENT, "identity", {"event_seq": i, "anchor": f"mac-{i}"})
+        id_ = box.enqueue(
+            PRIORITY_IDENTITY_EVENT, "identity", {"event_seq": i, "anchor": f"mac-{i}"}
+        )
         p0_ids.append(id_)
 
     box.enqueue(PRIORITY_INVENTORY, "inventory", {"hostname": "lab-pc-10"})
@@ -208,4 +211,3 @@ def test_simulate_server_down_two_minutes_queue_drains_no_loss_priority_zero(tmp
     # Ensure all 3 priority 0 items were delivered first
     p0_delivered = [item for item in delivered_topics if item[0] == "/api/v1/agents/identity"]
     assert len(p0_delivered) == 3
-

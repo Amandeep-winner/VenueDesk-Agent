@@ -1,4 +1,5 @@
 """Job executor enforcing allowlist validation and reporting status."""
+
 import logging
 from typing import Any
 
@@ -22,7 +23,9 @@ class JobExecutor:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
 
-    def execute(self, job_type: str, payload: dict[str, Any] | None = None) -> tuple[str, dict[str, Any] | None, str | None]:
+    def execute(
+        self, job_type: str, payload: dict[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any] | None, str | None]:
         """Execute a job and return (status, result, error).
 
         status is 'SUCCEEDED' or 'FAILED'.

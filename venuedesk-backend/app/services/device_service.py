@@ -1,4 +1,5 @@
 """Device lifecycle and offline marking service."""
+
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -43,9 +44,61 @@ def mark_offline_devices(heartbeat_interval_seconds: int = 60) -> list[str]:
             created_at=now,
         )
         db.session.add(event)
-        logger.info("Marked device %s as OFFLINE (last_seen=%s)", device.device_id, device.last_seen)
+        logger.info(
+            "Marked device %s as OFFLINE (last_seen=%s)", device.device_id, device.last_seen
+        )
 
     if marked_ids:
         db.session.commit()
 
     return marked_ids
+
+
+def revoke_device_credential(
+    device_identifier: int | str,
+    credential_version: int | None = None,
+    reason: str = "Administrative revocation",
+    actor: str = "system",
+) -> bool:
+    """Revoke credentials for a device, update status, and write an immutable audit log."""
+    from app.models.audit import ActorType, AuditAction, AuditLog
+    from app.models.device import DeviceCredential
+
+    device = None
+    if isinstance(device_identifier, int):
+        device = db.session.get(PhysicalDevice, device_identifier)
+    else:
+        device = PhysicalDevice.query.filter_by(device_id=str(device_identifier)).first()
+
+    if not device:
+        return False
+
+    now = datetime.now(UTC)
+    query = DeviceCredential.query.filter_by(device_id=device.id, status="ACTIVE")
+    if credential_version is not None:
+        query = query.filter_by(credential_version=credential_version)
+
+    creds = query.all()
+    for cred in creds:
+        cred.status = "REVOKED"
+        cred.revoked_at = now
+
+    db.session.add(
+        AuditLog(
+            actor_id=actor,
+            actor_type=ActorType.USER if actor != "system" else ActorType.SYSTEM,
+            action=AuditAction.CREDENTIAL_ROTATED,
+            entity_type="device",
+            entity_id=device.device_id,
+            new_value={
+                "status": "REVOKED",
+                "credential_version": credential_version,
+                "reason": reason,
+            },
+        )
+    )
+    db.session.commit()
+    logger.info(
+        "Revoked credential(s) for device %s (version=%s)", device.device_id, credential_version
+    )
+    return True

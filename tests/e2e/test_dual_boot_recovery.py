@@ -17,6 +17,7 @@ Tests:
 4. test_device_scoped_token_cannot_be_used_for_other_device
 5. test_os_count_is_derived
 """
+
 import base64
 import hashlib
 import json
@@ -77,7 +78,14 @@ def client(app):
 from app.security.signatures import canonical_string
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1) -> dict[str, str]:
+def sign_req(
+    dev_id: str,
+    key: Ed25519PrivateKey,
+    method: str,
+    path: str,
+    body: bytes,
+    key_ver: int = 1,
+) -> dict[str, str]:
     """Helper generating standard X-Device-ID and Ed25519 signature headers."""
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
@@ -130,7 +138,9 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
     ts = int(time.time())
     nonce = uuid.uuid4().hex
     tok_sha = hashlib.sha256(raw_asset_token.strip().encode("utf-8")).hexdigest()
-    win_pop = base64.b64encode(win_key.sign(f"enroll\n{tok_sha}\n{ts}\n{nonce}".encode())).decode("ascii")
+    win_pop = base64.b64encode(
+        win_key.sign(f"enroll\n{tok_sha}\n{ts}\n{nonce}".encode())
+    ).decode("ascii")
 
     w1_os_id = "w1-" + uuid.uuid4().hex[:12]
     w1_payload = {
@@ -174,7 +184,9 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         device = PhysicalDevice.query.filter_by(device_id=device_id).first()
         assert device is not None
         assert device.active_os_count == 1
-        links = AssetDeviceLink.query.filter_by(device_id=device.id, relationship_status=RelationshipStatus.ACTIVE).all()
+        links = AssetDeviceLink.query.filter_by(
+            device_id=device.id, relationship_status=RelationshipStatus.ACTIVE
+        ).all()
         assert len(links) == 1
         assert links[0].asset_id == asset_pk
 
@@ -188,12 +200,25 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
     # -------------------------------------------------------------------------
     # 2. Report Windows inventory (os_installation_id W1)
     # -------------------------------------------------------------------------
-    w1_inv_body = json.dumps({
-        "os_installation_id": w1_os_id,
-        "inventory": {"hostname": "dual-host-win", "ip_addresses": ["192.168.1.50"]},
-        "os": {"family": "WINDOWS", "name": "Windows 11 Enterprise", "version": "23H2", "os_installation_id": w1_os_id},
-    }, separators=(",", ":")).encode("utf-8")
-    headers = sign_req(device_id, win_key, "POST", "/api/v1/agents/inventory", w1_inv_body, key_ver=1)
+    w1_inv_body = json.dumps(
+        {
+            "os_installation_id": w1_os_id,
+            "inventory": {
+                "hostname": "dual-host-win",
+                "ip_addresses": ["192.168.1.50"],
+            },
+            "os": {
+                "family": "WINDOWS",
+                "name": "Windows 11 Enterprise",
+                "version": "23H2",
+                "os_installation_id": w1_os_id,
+            },
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers = sign_req(
+        device_id, win_key, "POST", "/api/v1/agents/inventory", w1_inv_body, key_ver=1
+    )
     headers["Content-Type"] = "application/json"
     resp = client.post("/api/v1/agents/inventory", data=w1_inv_body, headers=headers)
     assert resp.status_code == 200
@@ -225,7 +250,9 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
     ts_l1 = int(time.time())
     nonce_l1 = uuid.uuid4().hex
     tok_l1_sha = hashlib.sha256(raw_os_token.strip().encode("utf-8")).hexdigest()
-    l1_pop = base64.b64encode(linux_l1_key.sign(f"enroll\n{tok_l1_sha}\n{ts_l1}\n{nonce_l1}".encode())).decode("ascii")
+    l1_pop = base64.b64encode(
+        linux_l1_key.sign(f"enroll\n{tok_l1_sha}\n{ts_l1}\n{nonce_l1}".encode())
+    ).decode("ascii")
 
     l1_os_id = "l1-" + uuid.uuid4().hex[:12]
     l1_payload = {
@@ -270,13 +297,17 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert device is not None
         assert PhysicalDevice.query.count() == 1
         assert Asset.query.count() == 1
-        links = AssetDeviceLink.query.filter_by(relationship_status=RelationshipStatus.ACTIVE).all()
+        links = AssetDeviceLink.query.filter_by(
+            relationship_status=RelationshipStatus.ACTIVE
+        ).all()
         assert len(links) == 1
         assert links[0].device_id == device.id
         assert links[0].asset_id == asset_pk
 
         # Two ACTIVE OSInstallations: Windows W1 and Linux L1
-        active_os = OSInstallation.query.filter_by(device_id=device.id, status=OsInstallationStatus.ACTIVE).all()
+        active_os = OSInstallation.query.filter_by(
+            device_id=device.id, status=OsInstallationStatus.ACTIVE
+        ).all()
         assert len(active_os) == 2
         os_ids = {o.os_installation_id for o in active_os}
         assert w1_os_id in os_ids
@@ -291,16 +322,36 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert added_ev is not None
 
         # Two active credentials in device_credentials
-        creds = DeviceCredential.query.filter_by(device_id=device.id, status="ACTIVE").all()
+        creds = DeviceCredential.query.filter_by(
+            device_id=device.id, status="ACTIVE"
+        ).all()
         assert len(creds) >= 2
 
     # Linux reports inventory L1 signed by its own key
-    l1_inv_body = json.dumps({
-        "os_installation_id": l1_os_id,
-        "inventory": {"hostname": "dual-host-linux", "ip_addresses": ["192.168.1.51"]},
-        "os": {"family": "LINUX", "name": "Ubuntu", "version": "24.04", "os_installation_id": l1_os_id},
-    }, separators=(",", ":")).encode("utf-8")
-    headers = sign_req(device_id, linux_l1_key, "POST", "/api/v1/agents/inventory", l1_inv_body, key_ver=1)
+    l1_inv_body = json.dumps(
+        {
+            "os_installation_id": l1_os_id,
+            "inventory": {
+                "hostname": "dual-host-linux",
+                "ip_addresses": ["192.168.1.51"],
+            },
+            "os": {
+                "family": "LINUX",
+                "name": "Ubuntu",
+                "version": "24.04",
+                "os_installation_id": l1_os_id,
+            },
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers = sign_req(
+        device_id,
+        linux_l1_key,
+        "POST",
+        "/api/v1/agents/inventory",
+        l1_inv_body,
+        key_ver=1,
+    )
     headers["Content-Type"] = "application/json"
     resp = client.post("/api/v1/agents/inventory", data=l1_inv_body, headers=headers)
     assert resp.status_code == 200
@@ -309,20 +360,29 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
     # 4. Windows reports again -> still W1, not "first row"
     # -------------------------------------------------------------------------
     time.sleep(0.01)
-    hb_body = json.dumps({
-        "os_installation_id": w1_os_id,
-        "agent_instance_id": "inst-win-01",
-        "status": "ACTIVE",
-    }, separators=(",", ":")).encode("utf-8")
-    headers = sign_req(device_id, win_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_ver=1)
+    hb_body = json.dumps(
+        {
+            "os_installation_id": w1_os_id,
+            "agent_instance_id": "inst-win-01",
+            "status": "ACTIVE",
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers = sign_req(
+        device_id, win_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_ver=1
+    )
     headers["Content-Type"] = "application/json"
     resp = client.post("/api/v1/agents/heartbeat", data=hb_body, headers=headers)
     assert resp.status_code == 200
 
     with app.app_context():
         device = PhysicalDevice.query.filter_by(device_id=device_id).first()
-        w1_row = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=w1_os_id).first()
-        l1_row = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=l1_os_id).first()
+        w1_row = OSInstallation.query.filter_by(
+            device_id=device.id, os_installation_id=w1_os_id
+        ).first()
+        l1_row = OSInstallation.query.filter_by(
+            device_id=device.id, os_installation_id=l1_os_id
+        ).first()
         assert w1_row.status == OsInstallationStatus.ACTIVE
         assert l1_row.status == OsInstallationStatus.ACTIVE
         # W1 was updated by the Windows heartbeat
@@ -341,7 +401,9 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
 
     ts_l2 = int(time.time())
     nonce_l2 = uuid.uuid4().hex
-    l2_pop = base64.b64encode(linux_l2_key.sign(f"recover\n{linux_l2_pub_b64}\n{ts_l2}\n{nonce_l2}".encode())).decode("ascii")
+    l2_pop = base64.b64encode(
+        linux_l2_key.sign(f"recover\n{linux_l2_pub_b64}\n{ts_l2}\n{nonce_l2}".encode())
+    ).decode("ascii")
 
     l2_os_id = "l2-" + uuid.uuid4().hex[:12]
     l2_payload = {
@@ -386,7 +448,9 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert PhysicalDevice.query.count() == 1
         assert Asset.query.count() == 1
         # Assert link unchanged
-        active_link = AssetDeviceLink.query.filter_by(relationship_status=RelationshipStatus.ACTIVE).first()
+        active_link = AssetDeviceLink.query.filter_by(
+            relationship_status=RelationshipStatus.ACTIVE
+        ).first()
         assert active_link.device.device_id == device_id
         assert active_link.asset.asset_id == asset_id_str
 
@@ -395,19 +459,33 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert device.status == DeviceStatus.PENDING_REVERIFICATION
 
         # Recovery request pending
-        rec = DeviceRecoveryRequest.query.filter_by(device_id=device.id, status="PENDING").first()
+        rec = DeviceRecoveryRequest.query.filter_by(
+            device_id=device.id, status="PENDING"
+        ).first()
         assert rec is not None
         assert rec.new_public_key == linux_l2_pub_b64
 
     # -------------------------------------------------------------------------
     # 6. Without approval the L2 agent is denied jobs/telemetry
     # -------------------------------------------------------------------------
-    telemetry_body = json.dumps({
-        "samples": [{"metric": "cpu", "value": 15.0}],
-    }, separators=(",", ":")).encode("utf-8")
-    headers_l2_denied = sign_req(device_id, linux_l2_key, "POST", "/api/v1/agents/telemetry", telemetry_body, key_ver=1)
+    telemetry_body = json.dumps(
+        {
+            "samples": [{"metric": "cpu", "value": 15.0}],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers_l2_denied = sign_req(
+        device_id,
+        linux_l2_key,
+        "POST",
+        "/api/v1/agents/telemetry",
+        telemetry_body,
+        key_ver=1,
+    )
     headers_l2_denied["Content-Type"] = "application/json"
-    r_denied = client.post("/api/v1/agents/telemetry", data=telemetry_body, headers=headers_l2_denied)
+    r_denied = client.post(
+        "/api/v1/agents/telemetry", data=telemetry_body, headers=headers_l2_denied
+    )
     assert r_denied.status_code == 401
 
     # -------------------------------------------------------------------------
@@ -430,17 +508,23 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert device.credential_version == 2
 
         # L2 is ACTIVE
-        l2_os = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=l2_os_id).first()
+        l2_os = OSInstallation.query.filter_by(
+            device_id=device.id, os_installation_id=l2_os_id
+        ).first()
         assert l2_os is not None
         assert l2_os.status == OsInstallationStatus.ACTIVE
 
         # L1 is HISTORICAL
-        l1_os = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=l1_os_id).first()
+        l1_os = OSInstallation.query.filter_by(
+            device_id=device.id, os_installation_id=l1_os_id
+        ).first()
         assert l1_os is not None
         assert l1_os.status == OsInstallationStatus.HISTORICAL
 
         # Windows W1 remains ACTIVE throughout!
-        w1_os = OSInstallation.query.filter_by(device_id=device.id, os_installation_id=w1_os_id).first()
+        w1_os = OSInstallation.query.filter_by(
+            device_id=device.id, os_installation_id=w1_os_id
+        ).first()
         assert w1_os is not None
         assert w1_os.status == OsInstallationStatus.ACTIVE
 
@@ -448,12 +532,16 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert device.active_os_count == 2
 
         # L1 credential revoked in device_credentials
-        l1_cred = DeviceCredential.query.filter_by(device_id=device.id, os_installation_id=l1_os_id).first()
+        l1_cred = DeviceCredential.query.filter_by(
+            device_id=device.id, os_installation_id=l1_os_id
+        ).first()
         if l1_cred:
             assert l1_cred.status == "REVOKED"
 
         # L2 credential is active with credential_version == 2
-        l2_cred = DeviceCredential.query.filter_by(device_id=device.id, os_installation_id=l2_os_id).first()
+        l2_cred = DeviceCredential.query.filter_by(
+            device_id=device.id, os_installation_id=l2_os_id
+        ).first()
         assert l2_cred is not None
         assert l2_cred.status == "ACTIVE"
         assert l2_cred.credential_version == 2
@@ -465,13 +553,20 @@ def test_dual_boot_reinstall_recovery_sequence(client, app):
         assert AuditAction.HARDWARE_CHANGE_APPROVED in actions
 
     # L2 can now successfully authenticate with key_version 2
-    hb_l2 = json.dumps({
-        "os_installation_id": l2_os_id,
-        "status": "ACTIVE",
-    }, separators=(",", ":")).encode("utf-8")
-    headers_l2_allowed = sign_req(device_id, linux_l2_key, "POST", "/api/v1/agents/heartbeat", hb_l2, key_ver=2)
+    hb_l2 = json.dumps(
+        {
+            "os_installation_id": l2_os_id,
+            "status": "ACTIVE",
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers_l2_allowed = sign_req(
+        device_id, linux_l2_key, "POST", "/api/v1/agents/heartbeat", hb_l2, key_ver=2
+    )
     headers_l2_allowed["Content-Type"] = "application/json"
-    r_l2_hb = client.post("/api/v1/agents/heartbeat", data=hb_l2, headers=headers_l2_allowed)
+    r_l2_hb = client.post(
+        "/api/v1/agents/heartbeat", data=hb_l2, headers=headers_l2_allowed
+    )
     assert r_l2_hb.status_code == 200
 
 
@@ -526,14 +621,18 @@ def test_ambiguous_candidates_require_manual_pairing(client, app):
         db.session.commit()
 
     key = Ed25519PrivateKey.generate()
-    pub_b64 = base64.b64encode(key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )).decode("ascii")
+    pub_b64 = base64.b64encode(
+        key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+    ).decode("ascii")
 
     ts = int(time.time())
     nonce = uuid.uuid4().hex
-    pop = base64.b64encode(key.sign(f"recover\n{pub_b64}\n{ts}\n{nonce}".encode())).decode("ascii")
+    pop = base64.b64encode(
+        key.sign(f"recover\n{pub_b64}\n{ts}\n{nonce}".encode())
+    ).decode("ascii")
 
     payload = {
         "device_public_key": pub_b64,
@@ -604,14 +703,18 @@ def test_recovery_never_uses_similarity_alone(client, app):
         db.session.commit()
 
     new_key = Ed25519PrivateKey.generate()
-    new_pub_b64 = base64.b64encode(new_key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )).decode("ascii")
+    new_pub_b64 = base64.b64encode(
+        new_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+    ).decode("ascii")
 
     ts = int(time.time())
     nonce = uuid.uuid4().hex
-    pop = base64.b64encode(new_key.sign(f"recover\n{new_pub_b64}\n{ts}\n{nonce}".encode())).decode("ascii")
+    pop = base64.b64encode(
+        new_key.sign(f"recover\n{new_pub_b64}\n{ts}\n{nonce}".encode())
+    ).decode("ascii")
 
     # 100% matching hardware evidence
     payload = {
@@ -636,7 +739,9 @@ def test_recovery_never_uses_similarity_alone(client, app):
 
     with app.app_context():
         # Candidate MUST be in PENDING_REVERIFICATION, NEVER ACTIVE
-        dev_check = PhysicalDevice.query.filter_by(device_id="VD-DEVICE-SIMILAR-01").first()
+        dev_check = PhysicalDevice.query.filter_by(
+            device_id="VD-DEVICE-SIMILAR-01"
+        ).first()
         assert dev_check.status == DeviceStatus.PENDING_REVERIFICATION
         # Credential version is not changed before approval
         assert dev_check.credential_version == 1
@@ -685,15 +790,19 @@ def test_device_scoped_token_cannot_be_used_for_other_device(client, app):
 
     # Attacker machine B uses dev's token with completely different hardware
     key_b = Ed25519PrivateKey.generate()
-    pub_b_b64 = base64.b64encode(key_b.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )).decode("ascii")
+    pub_b_b64 = base64.b64encode(
+        key_b.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+    ).decode("ascii")
 
     ts = int(time.time())
     nonce = uuid.uuid4().hex
     tok_sha = hashlib.sha256(raw_token.strip().encode("utf-8")).hexdigest()
-    pop_b = base64.b64encode(key_b.sign(f"enroll\n{tok_sha}\n{ts}\n{nonce}".encode())).decode("ascii")
+    pop_b = base64.b64encode(
+        key_b.sign(f"enroll\n{tok_sha}\n{ts}\n{nonce}".encode())
+    ).decode("ascii")
 
     payload_b = {
         "enrollment_token": raw_token,
@@ -717,9 +826,13 @@ def test_device_scoped_token_cannot_be_used_for_other_device(client, app):
 
     with app.app_context():
         # Device must have entered PENDING_REVERIFICATION due to anchor mismatch
-        dev_check = PhysicalDevice.query.filter_by(device_id="VD-DEVICE-SCOPED-01").first()
+        dev_check = PhysicalDevice.query.filter_by(
+            device_id="VD-DEVICE-SCOPED-01"
+        ).first()
         assert dev_check.status == DeviceStatus.PENDING_REVERIFICATION
-        ev = DeviceEvent.query.filter_by(device_id=dev_check.id, event_type=DeviceEventType.IDENTITY_CHANGE_DETECTED).first()
+        ev = DeviceEvent.query.filter_by(
+            device_id=dev_check.id, event_type=DeviceEventType.IDENTITY_CHANGE_DETECTED
+        ).first()
         assert ev is not None
 
 

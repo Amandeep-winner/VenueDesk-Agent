@@ -1,4 +1,5 @@
 """GPU model collector with graceful degradation."""
+
 import logging
 import subprocess
 import sys
@@ -22,12 +23,14 @@ def collect_gpus() -> list[str]:
     gpus: list[str] = []
 
     if sys.platform == "win32":
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }",
+            ]
+        )
         if out:
             for line in out.splitlines():
                 s = line.strip()

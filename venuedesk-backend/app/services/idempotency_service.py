@@ -1,4 +1,5 @@
 """Server-side idempotency service tracking processed event IDs per device."""
+
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -15,9 +16,7 @@ def is_event_processed(device_id: int, event_id: str) -> bool:
     if not event_id:
         return False
     return (
-        db.session.query(ProcessedEvent)
-        .filter_by(device_id=device_id, event_id=event_id)
-        .first()
+        db.session.query(ProcessedEvent).filter_by(device_id=device_id, event_id=event_id).first()
         is not None
     )
 

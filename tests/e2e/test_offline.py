@@ -10,6 +10,7 @@ Tests:
 3. test_expired_credentials_pause_and_recover:
    - Client receives 401 on outdated credential version, refreshes active credential, and flushes queue without dropping items.
 """
+
 import base64
 import json
 import time
@@ -55,7 +56,14 @@ def client(app):
     return app.test_client()
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1) -> dict[str, str]:
+def sign_req(
+    dev_id: str,
+    key: Ed25519PrivateKey,
+    method: str,
+    path: str,
+    body: bytes,
+    key_ver: int = 1,
+) -> dict[str, str]:
     """Helper generating standard X-Device-ID and Ed25519 signature headers."""
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
@@ -160,9 +168,33 @@ def test_server_dedupes_event_ids(client, app):
     # 1. Telemetry Batch 1: samples with event_id e1, e2, e3
     batch_1 = {
         "samples": [
-            {"event_id": "ev_telemetry_1", "cpu_percent": 10.0, "memory_percent": 20.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 100},
-            {"event_id": "ev_telemetry_2", "cpu_percent": 15.0, "memory_percent": 25.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 110},
-            {"event_id": "ev_telemetry_3", "cpu_percent": 20.0, "memory_percent": 30.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 120},
+            {
+                "event_id": "ev_telemetry_1",
+                "cpu_percent": 10.0,
+                "memory_percent": 20.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 100,
+            },
+            {
+                "event_id": "ev_telemetry_2",
+                "cpu_percent": 15.0,
+                "memory_percent": 25.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 110,
+            },
+            {
+                "event_id": "ev_telemetry_3",
+                "cpu_percent": 20.0,
+                "memory_percent": 30.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 120,
+            },
         ]
     }
     body_1 = json.dumps(batch_1).encode("utf-8")
@@ -174,15 +206,43 @@ def test_server_dedupes_event_ids(client, app):
     data_1 = resp_1.get_json()
     assert data_1["status"] == "recorded"
     assert data_1["count"] == 3
-    assert set(data_1["accepted"]) == {"ev_telemetry_1", "ev_telemetry_2", "ev_telemetry_3"}
+    assert set(data_1["accepted"]) == {
+        "ev_telemetry_1",
+        "ev_telemetry_2",
+        "ev_telemetry_3",
+    }
     assert data_1["duplicates"] == []
 
     # 2. Telemetry Batch 2: replay ev_telemetry_2, ev_telemetry_3, and new ev_telemetry_4
     batch_2 = {
         "samples": [
-            {"event_id": "ev_telemetry_2", "cpu_percent": 99.0, "memory_percent": 99.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 110},
-            {"event_id": "ev_telemetry_3", "cpu_percent": 99.0, "memory_percent": 99.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 120},
-            {"event_id": "ev_telemetry_4", "cpu_percent": 25.0, "memory_percent": 35.0, "disk_percent": 30.0, "network_rx": 0, "network_tx": 0, "uptime": 130},
+            {
+                "event_id": "ev_telemetry_2",
+                "cpu_percent": 99.0,
+                "memory_percent": 99.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 110,
+            },
+            {
+                "event_id": "ev_telemetry_3",
+                "cpu_percent": 99.0,
+                "memory_percent": 99.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 120,
+            },
+            {
+                "event_id": "ev_telemetry_4",
+                "cpu_percent": 25.0,
+                "memory_percent": 35.0,
+                "disk_percent": 30.0,
+                "network_rx": 0,
+                "network_tx": 0,
+                "uptime": 130,
+            },
         ]
     }
     body_2 = json.dumps(batch_2).encode("utf-8")
@@ -212,13 +272,17 @@ def test_server_dedupes_event_ids(client, app):
     headers_inv = sign_req(dev_id, key, "POST", "/api/v1/agents/inventory", body_inv)
     headers_inv["Content-Type"] = "application/json"
 
-    resp_inv1 = client.post("/api/v1/agents/inventory", data=body_inv, headers=headers_inv)
+    resp_inv1 = client.post(
+        "/api/v1/agents/inventory", data=body_inv, headers=headers_inv
+    )
     assert resp_inv1.status_code == 200
     assert resp_inv1.get_json()["accepted"] == ["ev_inventory_01"]
 
     headers_inv2 = sign_req(dev_id, key, "POST", "/api/v1/agents/inventory", body_inv)
     headers_inv2["Content-Type"] = "application/json"
-    resp_inv2 = client.post("/api/v1/agents/inventory", data=body_inv, headers=headers_inv2)
+    resp_inv2 = client.post(
+        "/api/v1/agents/inventory", data=body_inv, headers=headers_inv2
+    )
     assert resp_inv2.status_code == 200
     assert resp_inv2.get_json()["duplicates"] == ["ev_inventory_01"]
 
@@ -304,17 +368,25 @@ def test_expired_credentials_pause_and_recover(client, app, tmp_path):
         "timestamp": rot_ts,
     }
     rot_body = json.dumps(rot_payload).encode("utf-8")
-    rot_headers = sign_req(dev_id, key1, "POST", "/api/v1/agents/rotate-credential", rot_body, key_ver=1)
+    rot_headers = sign_req(
+        dev_id, key1, "POST", "/api/v1/agents/rotate-credential", rot_body, key_ver=1
+    )
     rot_headers["Content-Type"] = "application/json"
 
-    rot_resp = client.post("/api/v1/agents/rotate-credential", data=rot_body, headers=rot_headers)
+    rot_resp = client.post(
+        "/api/v1/agents/rotate-credential", data=rot_body, headers=rot_headers
+    )
     assert rot_resp.status_code == 200
     assert rot_resp.get_json()["credential_version"] == 2
 
     # Now agent outbox has pending items
     db_file = tmp_path / "rot_outbox.db"
     box = Outbox(db_file)
-    box.enqueue(PRIORITY_INVENTORY, "inventory", {"hostname": "rotated-host", "ram_total_mb": 32768})
+    box.enqueue(
+        PRIORITY_INVENTORY,
+        "inventory",
+        {"hostname": "rotated-host", "ram_total_mb": 32768},
+    )
     assert box.count() == 1
 
     # Client still using key1 (version 1)

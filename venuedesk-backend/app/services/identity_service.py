@@ -1,4 +1,5 @@
 """Identity reconciliation, diffing, similarity scoring, and decision engine."""
+
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -50,9 +51,9 @@ class LinkConflictError(Exception):
         self.error_code = "link_conflict"
 
 
-
 class IdentityDecision(str, Enum):
     """Outcomes from identity decision engine."""
+
     SAME_DEVICE = "SAME_DEVICE"
     UNKNOWN_DEVICE = "UNKNOWN_DEVICE"
     PENDING_REVERIFICATION = "PENDING_REVERIFICATION"
@@ -63,6 +64,7 @@ class IdentityDecision(str, Enum):
 @dataclass
 class Observation:
     """Incoming endpoint observation evaluated by decision engine."""
+
     device_id: str | None = None
     device_public_key: str | None = None
     signature_valid: bool = False
@@ -134,15 +136,51 @@ class ChangeRecord:
 
 
 DEFAULT_IDENTITY_SEVERITY_POLICY = {
-    "ip_addresses": {"severity": EventSeverity.LOW, "requires_approval": False, "event_type": DeviceEventType.IP_CHANGED},
-    "hostname": {"severity": EventSeverity.LOW, "requires_approval": False, "event_type": DeviceEventType.HOSTNAME_CHANGED},
-    "ram_total_mb": {"severity": EventSeverity.LOW, "requires_approval": False, "event_type": DeviceEventType.RAM_CHANGED},
-    "gpus": {"severity": EventSeverity.LOW, "requires_approval": False, "event_type": DeviceEventType.GPU_CHANGED},
-    "disks": {"severity": EventSeverity.MEDIUM, "requires_approval": False, "event_type": DeviceEventType.DISK_CHANGED},
-    "mac_addresses": {"severity": EventSeverity.MEDIUM, "requires_approval": False, "event_type": DeviceEventType.NIC_CHANGED},
-    "fingerprint_version": {"severity": EventSeverity.INFO, "requires_approval": False, "event_type": DeviceEventType.FINGERPRINT_MIGRATED},
-    "motherboard_serial": {"severity": EventSeverity.HIGH, "requires_approval": True, "event_type": DeviceEventType.MOTHERBOARD_CHANGED},
-    "strong_anchors_conflict": {"severity": EventSeverity.HIGH, "requires_approval": True, "event_type": DeviceEventType.IDENTITY_CHANGE_DETECTED},
+    "ip_addresses": {
+        "severity": EventSeverity.LOW,
+        "requires_approval": False,
+        "event_type": DeviceEventType.IP_CHANGED,
+    },
+    "hostname": {
+        "severity": EventSeverity.LOW,
+        "requires_approval": False,
+        "event_type": DeviceEventType.HOSTNAME_CHANGED,
+    },
+    "ram_total_mb": {
+        "severity": EventSeverity.LOW,
+        "requires_approval": False,
+        "event_type": DeviceEventType.RAM_CHANGED,
+    },
+    "gpus": {
+        "severity": EventSeverity.LOW,
+        "requires_approval": False,
+        "event_type": DeviceEventType.GPU_CHANGED,
+    },
+    "disks": {
+        "severity": EventSeverity.MEDIUM,
+        "requires_approval": False,
+        "event_type": DeviceEventType.DISK_CHANGED,
+    },
+    "mac_addresses": {
+        "severity": EventSeverity.MEDIUM,
+        "requires_approval": False,
+        "event_type": DeviceEventType.NIC_CHANGED,
+    },
+    "fingerprint_version": {
+        "severity": EventSeverity.INFO,
+        "requires_approval": False,
+        "event_type": DeviceEventType.FINGERPRINT_MIGRATED,
+    },
+    "motherboard_serial": {
+        "severity": EventSeverity.HIGH,
+        "requires_approval": True,
+        "event_type": DeviceEventType.MOTHERBOARD_CHANGED,
+    },
+    "strong_anchors_conflict": {
+        "severity": EventSeverity.HIGH,
+        "requires_approval": True,
+        "event_type": DeviceEventType.IDENTITY_CHANGE_DETECTED,
+    },
 }
 
 
@@ -182,7 +220,9 @@ def classify_change(
     prev_fp_ver = prev_dict.get("fingerprint_version", 1)
     curr_fp_ver = current.get("fingerprint_version", 1)
     if prev_fp_ver and curr_fp_ver and prev_fp_ver != curr_fp_ver:
-        cfg = policy.get("fingerprint_version", {"severity": EventSeverity.INFO, "requires_approval": False})
+        cfg = policy.get(
+            "fingerprint_version", {"severity": EventSeverity.INFO, "requires_approval": False}
+        )
         records.append(
             ChangeRecord(
                 field="fingerprint_version",
@@ -222,12 +262,16 @@ def classify_change(
                 tpm_mismatched = True
 
     if mb_mismatched:
-        cfg = policy.get("motherboard_serial", {"severity": EventSeverity.HIGH, "requires_approval": True})
+        cfg = policy.get(
+            "motherboard_serial", {"severity": EventSeverity.HIGH, "requires_approval": True}
+        )
         records.append(
             ChangeRecord(
                 field="motherboard_serial_hash",
                 previous_value=str(prev_dict.get("motherboard_serial_hash")),
-                new_value=str(current.get("motherboard_serial_hash") or current.get("motherboard_serial")),
+                new_value=str(
+                    current.get("motherboard_serial_hash") or current.get("motherboard_serial")
+                ),
                 severity=cfg["severity"],
                 requires_approval=cfg["requires_approval"],
                 event_type=DeviceEventType.MOTHERBOARD_CHANGED,
@@ -238,7 +282,9 @@ def classify_change(
         needs_approval = True
 
     if tpm_mismatched:
-        cfg = policy.get("tpm_identity", {"severity": EventSeverity.HIGH, "requires_approval": True})
+        cfg = policy.get(
+            "tpm_identity", {"severity": EventSeverity.HIGH, "requires_approval": True}
+        )
         records.append(
             ChangeRecord(
                 field="tpm_identity",
@@ -254,7 +300,9 @@ def classify_change(
         needs_approval = True
 
     if mismatches >= 2:
-        cfg = policy.get("strong_anchors_conflict", {"severity": EventSeverity.HIGH, "requires_approval": True})
+        cfg = policy.get(
+            "strong_anchors_conflict", {"severity": EventSeverity.HIGH, "requires_approval": True}
+        )
         records.append(
             ChangeRecord(
                 field="strong_anchors_conflict",
@@ -271,56 +319,130 @@ def classify_change(
 
     # 3. Inventory changes (if provided)
     if inventory_prev and inventory_curr:
-        inv_p = inventory_prev if isinstance(inventory_prev, dict) else {
-            "hostname": inventory_prev.hostname,
-            "ip_addresses": inventory_prev.ip_addresses or [],
-            "mac_addresses": inventory_prev.mac_addresses or [],
-            "ram_total_mb": inventory_prev.ram_total_mb,
-            "gpus": inventory_prev.gpus or [],
-            "disks": inventory_prev.disks or [],
-        }
+        inv_p = (
+            inventory_prev
+            if isinstance(inventory_prev, dict)
+            else {
+                "hostname": inventory_prev.hostname,
+                "ip_addresses": inventory_prev.ip_addresses or [],
+                "mac_addresses": inventory_prev.mac_addresses or [],
+                "ram_total_mb": inventory_prev.ram_total_mb,
+                "gpus": inventory_prev.gpus or [],
+                "disks": inventory_prev.disks or [],
+            }
+        )
 
         # IP changed
         old_ips = sorted(inv_p.get("ip_addresses") or [])
         new_ips = sorted(inventory_curr.get("ip_addresses") or [])
         if old_ips and new_ips and old_ips != new_ips:
-            cfg = policy.get("ip_addresses", {"severity": EventSeverity.LOW, "requires_approval": False})
-            records.append(ChangeRecord("ip_addresses", old_ips, new_ips, cfg["severity"], cfg["requires_approval"], DeviceEventType.IP_CHANGED, "IP_CHANGED"))
+            cfg = policy.get(
+                "ip_addresses", {"severity": EventSeverity.LOW, "requires_approval": False}
+            )
+            records.append(
+                ChangeRecord(
+                    "ip_addresses",
+                    old_ips,
+                    new_ips,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.IP_CHANGED,
+                    "IP_CHANGED",
+                )
+            )
 
         # Hostname changed
         old_h = inv_p.get("hostname")
         new_h = inventory_curr.get("hostname")
         if old_h and new_h and old_h != new_h and old_h != "unknown":
-            cfg = policy.get("hostname", {"severity": EventSeverity.LOW, "requires_approval": False})
-            records.append(ChangeRecord("hostname", old_h, new_h, cfg["severity"], cfg["requires_approval"], DeviceEventType.HOSTNAME_CHANGED, "HOSTNAME_CHANGED"))
+            cfg = policy.get(
+                "hostname", {"severity": EventSeverity.LOW, "requires_approval": False}
+            )
+            records.append(
+                ChangeRecord(
+                    "hostname",
+                    old_h,
+                    new_h,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.HOSTNAME_CHANGED,
+                    "HOSTNAME_CHANGED",
+                )
+            )
 
         # RAM changed
         old_ram = inv_p.get("ram_total_mb")
         new_ram = inventory_curr.get("ram_total_mb")
         if old_ram and new_ram and old_ram != new_ram:
-            cfg = policy.get("ram_total_mb", {"severity": EventSeverity.LOW, "requires_approval": False})
-            records.append(ChangeRecord("ram_total_mb", old_ram, new_ram, cfg["severity"], cfg["requires_approval"], DeviceEventType.RAM_CHANGED, "RAM_CHANGED"))
+            cfg = policy.get(
+                "ram_total_mb", {"severity": EventSeverity.LOW, "requires_approval": False}
+            )
+            records.append(
+                ChangeRecord(
+                    "ram_total_mb",
+                    old_ram,
+                    new_ram,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.RAM_CHANGED,
+                    "RAM_CHANGED",
+                )
+            )
 
         # GPU changed
         old_gpus = sorted(inv_p.get("gpus") or [])
         new_gpus = sorted(inventory_curr.get("gpus") or [])
         if old_gpus and new_gpus and old_gpus != new_gpus:
             cfg = policy.get("gpus", {"severity": EventSeverity.LOW, "requires_approval": False})
-            records.append(ChangeRecord("gpus", old_gpus, new_gpus, cfg["severity"], cfg["requires_approval"], DeviceEventType.GPU_CHANGED, "GPU_CHANGED"))
+            records.append(
+                ChangeRecord(
+                    "gpus",
+                    old_gpus,
+                    new_gpus,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.GPU_CHANGED,
+                    "GPU_CHANGED",
+                )
+            )
 
         # Disks changed
         old_disks = sorted(inv_p.get("disks") or [])
         new_disks = sorted(inventory_curr.get("disks") or [])
         if old_disks and new_disks and old_disks != new_disks:
-            cfg = policy.get("disks", {"severity": EventSeverity.MEDIUM, "requires_approval": False})
-            records.append(ChangeRecord("disks", old_disks, new_disks, cfg["severity"], cfg["requires_approval"], DeviceEventType.DISK_CHANGED, "DISK_CHANGED"))
+            cfg = policy.get(
+                "disks", {"severity": EventSeverity.MEDIUM, "requires_approval": False}
+            )
+            records.append(
+                ChangeRecord(
+                    "disks",
+                    old_disks,
+                    new_disks,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.DISK_CHANGED,
+                    "DISK_CHANGED",
+                )
+            )
 
         # NICs changed
         old_macs = sorted(inv_p.get("mac_addresses") or [])
         new_macs = sorted(inventory_curr.get("mac_addresses") or [])
         if old_macs and new_macs and old_macs != new_macs:
-            cfg = policy.get("mac_addresses", {"severity": EventSeverity.MEDIUM, "requires_approval": False})
-            records.append(ChangeRecord("mac_addresses", old_macs, new_macs, cfg["severity"], cfg["requires_approval"], DeviceEventType.NIC_CHANGED, "NIC_CHANGED"))
+            cfg = policy.get(
+                "mac_addresses", {"severity": EventSeverity.MEDIUM, "requires_approval": False}
+            )
+            records.append(
+                ChangeRecord(
+                    "mac_addresses",
+                    old_macs,
+                    new_macs,
+                    cfg["severity"],
+                    cfg["requires_approval"],
+                    DeviceEventType.NIC_CHANGED,
+                    "NIC_CHANGED",
+                )
+            )
 
     return records, decision, needs_approval
 
@@ -424,7 +546,6 @@ def evidence_is_strong(candidate: PhysicalDevice, obs: Observation) -> bool:
     return strong_matches >= 2
 
 
-
 def find_candidates_by_evidence(obs: Observation) -> list[tuple[PhysicalDevice, float]]:
     """Find and rank existing physical devices by hardware similarity score."""
     obs_ev = obs.evidence
@@ -472,13 +593,19 @@ def find_candidates_by_evidence(obs: Observation) -> list[tuple[PhysicalDevice, 
     return candidates
 
 
-def determine_device_identity(obs: Observation) -> tuple[IdentityDecision, list[PhysicalDevice], float]:
+def determine_device_identity(
+    obs: Observation,
+) -> tuple[IdentityDecision, list[PhysicalDevice], float]:
     """Identity decision engine per specification §4.7.
-    
+
     Security Invariant: A high similarity score is advisory only and NEVER links an asset.
     """
     if obs.valid_signature_for_active_device:
-        dev = PhysicalDevice.query.filter_by(device_id=obs.device_id).first() if obs.device_id else None
+        dev = (
+            PhysicalDevice.query.filter_by(device_id=obs.device_id).first()
+            if obs.device_id
+            else None
+        )
         return IdentityDecision.SAME_DEVICE, [dev] if dev else [], 100.0
 
     candidates_with_scores = find_candidates_by_evidence(obs)
@@ -501,7 +628,9 @@ def determine_device_identity(obs: Observation) -> tuple[IdentityDecision, list[
     return IdentityDecision.MANUAL_VERIFICATION, candidates, best_score
 
 
-def reconcile_device_evidence(device: PhysicalDevice, new_evidence: dict[str, Any]) -> list[DeviceEvent]:
+def reconcile_device_evidence(
+    device: PhysicalDevice, new_evidence: dict[str, Any]
+) -> list[DeviceEvent]:
     """Diff new evidence against last trusted evidence snapshot and emit audited events."""
     ref_ev = (
         DeviceIdentityEvidence.query.filter(
@@ -548,7 +677,9 @@ def reconcile_device_evidence(device: PhysicalDevice, new_evidence: dict[str, An
             device_id=device.id,
             occurred_at=now,
             field=rec.field,
-            previous_value=str(rec.previous_value)[:255] if rec.previous_value is not None else None,
+            previous_value=str(rec.previous_value)[:255]
+            if rec.previous_value is not None
+            else None,
             new_value=str(rec.new_value)[:255] if rec.new_value is not None else None,
             evidence_source=EvidenceSource.AGENT_IDENTITY,
             reconciliation_decision=rec.decision,
@@ -615,7 +746,9 @@ def reconcile_device_inventory(
             device_id=device.id,
             occurred_at=now,
             field=rec.field,
-            previous_value=str(rec.previous_value)[:255] if rec.previous_value is not None else None,
+            previous_value=str(rec.previous_value)[:255]
+            if rec.previous_value is not None
+            else None,
             new_value=str(rec.new_value)[:255] if rec.new_value is not None else None,
             evidence_source=EvidenceSource.AGENT_INVENTORY,
             reconciliation_decision=rec.decision,
@@ -774,7 +907,9 @@ def pair_device(
 
         # 2. Validate lifecycle status
         if asset.lifecycle_status in (AssetLifecycleStatus.RETIRED, AssetLifecycleStatus.DISPOSED):
-            raise ValueError(f"Asset {asset.asset_id} is {asset.lifecycle_status.value} and cannot be paired")
+            raise ValueError(
+                f"Asset {asset.asset_id} is {asset.lifecycle_status.value} and cannot be paired"
+            )
 
         if dev.status in (DeviceStatus.REVOKED, DeviceStatus.RETIRED):
             raise ValueError(f"Device {dev.device_id} is {dev.status.value} and cannot be paired")
@@ -787,7 +922,9 @@ def pair_device(
                 DeviceStatus.ENROLLING,
             )
             if not reassignment and dev.status not in allowed_statuses:
-                raise ValueError(f"Device {dev.device_id} status {dev.status.value} does not permit initial pairing")
+                raise ValueError(
+                    f"Device {dev.device_id} status {dev.status.value} does not permit initial pairing"
+                )
 
         # 3. Look up active links
         existing_asset_link = AssetDeviceLink.query.filter_by(
@@ -851,7 +988,12 @@ def pair_device(
             relationship_status=RelationshipStatus.ACTIVE,
             linked_at=now,
             linked_by=admin_name,
-            reason=reason or ("Admin paired unclaimed device" if admin_name != "system" else "asset-scoped enrollment token"),
+            reason=reason
+            or (
+                "Admin paired unclaimed device"
+                if admin_name != "system"
+                else "asset-scoped enrollment token"
+            ),
         )
         db.session.add(link)
 
@@ -865,7 +1007,11 @@ def pair_device(
                 action=AuditAction.DEVICE_LINKED,
                 entity_type="link",
                 entity_id=f"{asset.asset_id}:{dev.device_id}",
-                new_value={"asset_id": asset.asset_id, "device_id": dev.device_id, "reason": link.reason},
+                new_value={
+                    "asset_id": asset.asset_id,
+                    "device_id": dev.device_id,
+                    "reason": link.reason,
+                },
             )
         )
 
@@ -902,7 +1048,6 @@ def pair_unclaimed_device(
         reassignment=False,
     )
     return dev, asset
-
 
 
 def approve_device_recovery(
@@ -978,6 +1123,7 @@ def approve_device_recovery(
 
     # 3. Revoke previous credentials for the reinstalled slot
     from app.models.device import DeviceCredential
+
     if prior_os_inst_ids:
         prev_creds = DeviceCredential.query.filter(
             DeviceCredential.device_id == dev.id,
@@ -1101,7 +1247,10 @@ def approve_device_recovery(
             entity_id=dev.device_id,
             old_value={"status": DeviceStatus.PENDING_REVERIFICATION.value},
             new_value={"status": dev.status.value, "os_installation_id": new_os_inst_id},
-            metadata_json={"recovery_request_id": rec_req.id, "reason": rec_req.reason or "Admin approved recovery"},
+            metadata_json={
+                "recovery_request_id": rec_req.id,
+                "reason": rec_req.reason or "Admin approved recovery",
+            },
         )
     )
     db.session.commit()
@@ -1234,6 +1383,7 @@ def replace_device_endpoint(
 
     # 4. Generate new pairing token for the same asset
     from app.security.tokens import create_token_for_asset
+
     raw_token, token_obj = create_token_for_asset(asset.id, created_by=admin_name)
 
     # 5. Audit token creation
@@ -1250,4 +1400,3 @@ def replace_device_endpoint(
 
     db.session.commit()
     return dev, asset, raw_token, token_obj
-

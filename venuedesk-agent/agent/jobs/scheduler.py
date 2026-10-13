@@ -1,4 +1,5 @@
 """Remote job poller and dispatcher for VenueDesk agent."""
+
 import logging
 from typing import Any
 
@@ -59,12 +60,14 @@ class JobPoller:
                     json_data=result_payload,
                 )
 
-                executed.append({
-                    "id": job_id,
-                    "job_type": job_type,
-                    "status": status,
-                    "reported": report_resp.status_code == 200,
-                })
+                executed.append(
+                    {
+                        "id": job_id,
+                        "job_type": job_type,
+                        "status": status,
+                        "reported": report_resp.status_code == 200,
+                    }
+                )
 
         except Exception as exc:
             logger.exception("Error in job poll and execution cycle")

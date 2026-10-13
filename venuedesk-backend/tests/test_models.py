@@ -1,4 +1,5 @@
 """Unit tests for database models, constraints, and seed CLI."""
+
 from datetime import UTC
 
 import pytest
@@ -43,7 +44,7 @@ def test_asset_creation(app):
             asset_type=AssetType.DESKTOP,
             department_id="DEP_CS",
             room_id="ROOM_101",
-            lifecycle_status=AssetLifecycleStatus.DRAFT
+            lifecycle_status=AssetLifecycleStatus.DRAFT,
         )
         db.session.add(asset)
         db.session.commit()
@@ -57,14 +58,11 @@ def test_asset_creation(app):
 def test_physical_device_and_link(app):
     """Verify physical device creation and active link establishment."""
     with app.app_context():
-        asset = Asset(
-            asset_id=generate_next_asset_id(db.session),
-            asset_tag="ASSET-PC-01"
-        )
+        asset = Asset(asset_id=generate_next_asset_id(db.session), asset_tag="ASSET-PC-01")
         device = PhysicalDevice(
             device_id=generate_device_id(),
             device_public_key="base64-fake-pubkey",
-            status=DeviceStatus.ENROLLING
+            status=DeviceStatus.ENROLLING,
         )
         db.session.add_all([asset, device])
         db.session.commit()
@@ -73,7 +71,7 @@ def test_physical_device_and_link(app):
             asset_id=asset.id,
             device_id=device.id,
             relationship_status=RelationshipStatus.ACTIVE,
-            linked_by="admin"
+            linked_by="admin",
         )
         db.session.add(link)
         db.session.commit()
@@ -91,12 +89,16 @@ def test_single_active_link_constraint_on_asset(app):
         db.session.add_all([asset, dev1, dev2])
         db.session.commit()
 
-        link1 = AssetDeviceLink(asset_id=asset.id, device_id=dev1.id, relationship_status=RelationshipStatus.ACTIVE)
+        link1 = AssetDeviceLink(
+            asset_id=asset.id, device_id=dev1.id, relationship_status=RelationshipStatus.ACTIVE
+        )
         db.session.add(link1)
         db.session.commit()
 
         # Attempt second active link for the same asset
-        link2 = AssetDeviceLink(asset_id=asset.id, device_id=dev2.id, relationship_status=RelationshipStatus.ACTIVE)
+        link2 = AssetDeviceLink(
+            asset_id=asset.id, device_id=dev2.id, relationship_status=RelationshipStatus.ACTIVE
+        )
         db.session.add(link2)
         with pytest.raises(ValueError, match="already has an ACTIVE link"):
             db.session.commit()
@@ -112,12 +114,16 @@ def test_single_active_link_constraint_on_device(app):
         db.session.add_all([asset1, asset2, dev])
         db.session.commit()
 
-        link1 = AssetDeviceLink(asset_id=asset1.id, device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE)
+        link1 = AssetDeviceLink(
+            asset_id=asset1.id, device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE
+        )
         db.session.add(link1)
         db.session.commit()
 
         # Attempt second active link for the same device
-        link2 = AssetDeviceLink(asset_id=asset2.id, device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE)
+        link2 = AssetDeviceLink(
+            asset_id=asset2.id, device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE
+        )
         db.session.add(link2)
         with pytest.raises(ValueError, match="already has an ACTIVE link"):
             db.session.commit()
@@ -128,12 +134,17 @@ def test_request_nonce_uniqueness(app):
     """Enforce unique (device_id, nonce) constraint."""
     with app.app_context():
         from datetime import datetime, timedelta
+
         expires = datetime.now(UTC) + timedelta(minutes=5)
-        n1 = RequestNonce(device_id="VD-DEVICE-11112222", nonce="unique-nonce-1", expires_at=expires)
+        n1 = RequestNonce(
+            device_id="VD-DEVICE-11112222", nonce="unique-nonce-1", expires_at=expires
+        )
         db.session.add(n1)
         db.session.commit()
 
-        n2 = RequestNonce(device_id="VD-DEVICE-11112222", nonce="unique-nonce-1", expires_at=expires)
+        n2 = RequestNonce(
+            device_id="VD-DEVICE-11112222", nonce="unique-nonce-1", expires_at=expires
+        )
         db.session.add(n2)
         with pytest.raises(IntegrityError):
             db.session.commit()
