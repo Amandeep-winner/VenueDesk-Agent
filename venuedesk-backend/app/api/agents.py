@@ -20,6 +20,7 @@ from app.models import (
     OSInstallation,
     OsInstallationStatus,
 )
+from app.security.policy import enforce_policy
 from app.security.signatures import require_device_auth, verify
 from app.services.enrollment_service import enroll_agent
 from app.services.identity_service import LinkConflictError
@@ -46,6 +47,7 @@ def reset_rate_limits() -> None:
 
 
 @agents_bp.route("/enroll", methods=["POST"])
+@enforce_policy
 def enroll():
     """Enroll endpoint with the control plane (token or unclaimed mode)."""
     source_ip = request.remote_addr or "127.0.0.1"
@@ -65,9 +67,9 @@ def enroll():
         return jsonify(res), 200
     except PermissionError as exc:
         return jsonify({"error": "unclaimed_enrollment_disabled", "message": str(exc)}), 403
-    except LinkConflictError as exc:
+    except LinkConflictError:
         db.session.rollback()
-        return jsonify({"error": "invalid_enrollment_token", "message": str(exc)}), 400
+        return jsonify({"error": "invalid_enrollment_token", "message": "Invalid enrollment token"}), 400
     except ValueError as exc:
         # Audit failed enrollment attempt
         try:
@@ -86,10 +88,13 @@ def enroll():
         except (db.exc.SQLAlchemyError, OSError):
             db.session.rollback()
 
+        if payload.get("pairing_token") or payload.get("enrollment_token"):
+            return jsonify({"error": "invalid_enrollment_token", "message": str(exc)}), 400
         return jsonify({"error": "invalid_enrollment", "message": str(exc)}), 400
 
 
 @agents_bp.route("/recover", methods=["POST"])
+@enforce_policy
 def recover():
     """Endpoint recovery workflow following OS reinstall or state loss (spec §4.8)."""
     source_ip = request.remote_addr or "127.0.0.1"
@@ -199,6 +204,7 @@ def recover():
 
 
 @agents_bp.route("/recover/status", methods=["GET"])
+@enforce_policy
 def recover_status():
     """Poll endpoint recovery approval status."""
     device_id = request.args.get("device_id") or request.headers.get("X-Device-ID")

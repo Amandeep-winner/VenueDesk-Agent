@@ -172,7 +172,7 @@ def test_replay_nonce_rejected(client, app):
     # Replay same nonce -> 401
     r2 = client.post("/api/v1/agents/heartbeat", data=body, headers=headers)
     assert r2.status_code == 401
-    assert "nonce_replayed" in r2.get_json()["error"]
+    assert "unauthorized" in r2.get_json()["error"]
 
 
 def test_revoked_device_blocked(client, app):

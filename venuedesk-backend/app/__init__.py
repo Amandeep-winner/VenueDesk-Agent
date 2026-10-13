@@ -24,6 +24,15 @@ def create_app(config_name=None, test_config=None):
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)
 
+    # Attach redaction logging filter
+    import logging
+
+    from app.logging_filters import RedactingFilter
+
+    redact_filter = RedactingFilter()
+    flask_app.logger.addFilter(redact_filter)
+    logging.getLogger().addFilter(redact_filter)
+
     # Register Jinja global helpers
     flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
     flask_app.jinja_env.globals["hasattr"] = hasattr

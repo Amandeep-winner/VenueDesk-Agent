@@ -6,7 +6,10 @@ from datetime import UTC, datetime, timedelta
 from app.extensions import db
 from app.models import DeviceJob, DeviceStatus, JobStatus, JobType, User, UserRole
 from app.services.job_service import create_job
-from tests.test_authenticated_communication import create_enrolled_device, sign_request
+try:
+    from test_authenticated_communication import create_enrolled_device, sign_request
+except ImportError:
+    from tests.test_authenticated_communication import create_enrolled_device, sign_request
 
 
 def ensure_admin(app) -> dict[str, str]:

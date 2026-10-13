@@ -166,7 +166,7 @@ def test_clock_skew_rejected(app, client, test_device_keypair):
 
     res = client.get("/test-skew", headers=headers)
     assert res.status_code == 401
-    assert res.get_json()["error"] == "clock_skew"
+    assert res.get_json()["error"] == "unauthorized"
 
 
 def test_blocked_device_returns_403(app, client, test_device_keypair):

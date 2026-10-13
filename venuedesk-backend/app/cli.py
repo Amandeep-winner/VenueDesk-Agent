@@ -101,9 +101,19 @@ def purge_telemetry_command(older_than_days):
     click.echo(f"Purged {deleted} telemetry records older than {older_than_days} days.")
 
 
+@click.command("purge-nonces")
+@with_appcontext
+def purge_nonces_command():
+    """Purge expired request nonces."""
+    from app.security.replay import purge_expired_nonces
+    deleted = purge_expired_nonces()
+    click.echo(f"Purged {deleted} expired request nonces.")
+
+
 def register_cli_commands(app):
     """Register CLI commands with the Flask application."""
     app.cli.add_command(seed_demo_command)
     app.cli.add_command(create_admin_command)
     app.cli.add_command(mark_offline_command)
     app.cli.add_command(purge_telemetry_command)
+    app.cli.add_command(purge_nonces_command)

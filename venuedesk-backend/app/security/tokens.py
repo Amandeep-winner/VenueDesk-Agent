@@ -3,8 +3,6 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
-
 from app.extensions import db
 from app.models import EnrollmentToken, EnrollmentTokenStatus
 
@@ -48,32 +46,37 @@ def consume_token_atomically(raw_token: str, device_id: int | None = None) -> En
     thash = hash_token(raw_token)
     now = datetime.now(UTC)
 
-    # Use SELECT FOR UPDATE for concurrency safety
-    token_row = db.session.execute(
-        select(EnrollmentToken).where(EnrollmentToken.token_hash == thash).with_for_update()
-    ).scalar_one_or_none()
+    # Single atomic UPDATE statement across PostgreSQL and SQLite
+    stmt = (
+        db.update(EnrollmentToken)
+        .where(
+            EnrollmentToken.token_hash == thash,
+            EnrollmentToken.status == EnrollmentTokenStatus.ACTIVE,
+            EnrollmentToken.expires_at > now,
+            EnrollmentToken.revoked_at.is_(None),
+        )
+        .values(
+            status=EnrollmentTokenStatus.USED,
+            used_at=now,
+            used_by_device_id=device_id,
+        )
+    )
+    result = db.session.execute(stmt)
+    if result.rowcount == 1:
+        token_row = EnrollmentToken.query.filter_by(token_hash=thash).first()
+        return token_row
 
-    if token_row is None:
+    # When update affects 0 rows, reject with appropriate failure message
+    tok = EnrollmentToken.query.filter_by(token_hash=thash).first()
+    if tok is None:
         raise ValueError("Invalid pairing token")
+    if tok.status != EnrollmentTokenStatus.ACTIVE:
+        raise ValueError(f"Pairing token is not active (status: {tok.status.value})")
 
-    if token_row.status != EnrollmentTokenStatus.ACTIVE:
-        raise ValueError(f"Pairing token is not active (status: {token_row.status.value})")
-
-    # Check expiry
-    # Normalize token_row.expires_at to UTC
-    expires_at = token_row.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-
+    expires_at = tok.expires_at if tok.expires_at.tzinfo else tok.expires_at.replace(tzinfo=UTC)
     if now > expires_at:
-        token_row.status = EnrollmentTokenStatus.EXPIRED
+        tok.status = EnrollmentTokenStatus.EXPIRED
         db.session.flush()
         raise ValueError("Pairing token has expired")
 
-    token_row.status = EnrollmentTokenStatus.USED
-    token_row.used_at = now
-    if device_id is not None:
-        token_row.used_by_device_id = device_id
-
-    db.session.flush()
-    return token_row
+    raise ValueError("Invalid pairing token")
