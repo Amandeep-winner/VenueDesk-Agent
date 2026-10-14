@@ -34,4 +34,4 @@ EXPOSE 5001
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://127.0.0.1:5001/healthz || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "4", "--timeout", "60", "app:create_app()"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:create_app()"]

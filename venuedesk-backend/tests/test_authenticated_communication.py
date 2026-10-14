@@ -1,4 +1,5 @@
 """Integration and unit tests for authenticated communication, heartbeats, and credential rotation."""
+
 import base64
 import hashlib
 import json
@@ -148,7 +149,9 @@ def test_unsigned_or_tampered_request_rejected(client, app):
     assert r_tampered.status_code == 401
 
     # 3. Clock skew outside window -> 401
-    headers_skew = sign_request(dev_id, key, "POST", "/api/v1/agents/heartbeat", b"", skew_seconds=300)
+    headers_skew = sign_request(
+        dev_id, key, "POST", "/api/v1/agents/heartbeat", b"", skew_seconds=300
+    )
     r_skew = client.post("/api/v1/agents/heartbeat", data=b"", headers=headers_skew)
     assert r_skew.status_code == 401
 
@@ -163,7 +166,9 @@ def test_replay_nonce_rejected(client, app):
     fixed_nonce = uuid.uuid4().hex
     body = b'{"ping":true}'
 
-    headers = sign_request(dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce)
+    headers = sign_request(
+        dev_id, key, "POST", "/api/v1/agents/heartbeat", body, override_nonce=fixed_nonce
+    )
     headers["Content-Type"] = "application/json"
 
     r1 = client.post("/api/v1/agents/heartbeat", data=body, headers=headers)
@@ -172,7 +177,7 @@ def test_replay_nonce_rejected(client, app):
     # Replay same nonce -> 401
     r2 = client.post("/api/v1/agents/heartbeat", data=body, headers=headers)
     assert r2.status_code == 401
-    assert "nonce_replayed" in r2.get_json()["error"]
+    assert "unauthorized" in r2.get_json()["error"]
 
 
 def test_revoked_device_blocked(client, app):
@@ -186,7 +191,9 @@ def test_revoked_device_blocked(client, app):
 
 def test_duplicate_device_detection(client, app):
     """Spec §4.9: Unexpected instance_id arriving within duplicate window triggers CRITICAL suspension."""
-    dev_id, key = create_enrolled_device(app, last_seen=datetime.now(UTC), agent_instance_id="inst-registered")
+    dev_id, key = create_enrolled_device(
+        app, last_seen=datetime.now(UTC), agent_instance_id="inst-registered"
+    )
 
     # Heartbeat from a different instance ID
     payload = {
@@ -234,7 +241,9 @@ def test_credential_rotation(client, app):
         "timestamp": ts,
     }
     body = json.dumps(rot_payload, separators=(",", ":")).encode("utf-8")
-    headers = sign_request(dev_id, old_key, "POST", "/api/v1/agents/rotate-credential", body, key_version=1)
+    headers = sign_request(
+        dev_id, old_key, "POST", "/api/v1/agents/rotate-credential", body, key_version=1
+    )
     headers["Content-Type"] = "application/json"
 
     r_rot = client.post("/api/v1/agents/rotate-credential", data=body, headers=headers)
@@ -243,12 +252,16 @@ def test_credential_rotation(client, app):
 
     # Verification: Old key should now be rejected (version mismatch or invalid signature)
     hb_body = b'{"status":"ACTIVE"}'
-    old_headers = sign_request(dev_id, old_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_version=1)
+    old_headers = sign_request(
+        dev_id, old_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_version=1
+    )
     r_old = client.post("/api/v1/agents/heartbeat", data=hb_body, headers=old_headers)
     assert r_old.status_code == 401
 
     # New key with version 2 should succeed
-    new_headers = sign_request(dev_id, new_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_version=2)
+    new_headers = sign_request(
+        dev_id, new_key, "POST", "/api/v1/agents/heartbeat", hb_body, key_version=2
+    )
     r_new = client.post("/api/v1/agents/heartbeat", data=hb_body, headers=new_headers)
     assert r_new.status_code == 200
 
@@ -257,9 +270,13 @@ def test_mark_offline_devices(app):
     """Test background offline marking job for stale active devices."""
     with app.app_context():
         # Fresh device (10 seconds ago)
-        dev_fresh, _ = create_enrolled_device(app, last_seen=datetime.now(UTC) - timedelta(seconds=10))
+        dev_fresh, _ = create_enrolled_device(
+            app, last_seen=datetime.now(UTC) - timedelta(seconds=10)
+        )
         # Stale device (300 seconds ago, > 3*60s threshold)
-        dev_stale, _ = create_enrolled_device(app, last_seen=datetime.now(UTC) - timedelta(seconds=300))
+        dev_stale, _ = create_enrolled_device(
+            app, last_seen=datetime.now(UTC) - timedelta(seconds=300)
+        )
 
         marked = mark_offline_devices(heartbeat_interval_seconds=60)
         assert dev_stale in marked

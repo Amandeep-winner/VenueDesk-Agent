@@ -1,4 +1,5 @@
 """Unit tests for agent retry policy, authenticated client, and heartbeat."""
+
 from unittest.mock import patch
 
 import httpx
@@ -62,7 +63,9 @@ def test_authenticated_client_headers_and_dispatch(tmp_path):
 
     client = AuthenticatedClient(cfg, db=db, keystore=key_store)
 
-    fake_resp = httpx.Response(200, json={"server_time": 1760000000, "config_version": 1, "pending_jobs": False})
+    fake_resp = httpx.Response(
+        200, json={"server_time": 1760000000, "config_version": 1, "pending_jobs": False}
+    )
     with patch("httpx.Client.request", return_value=fake_resp) as mock_req:
         resp = client.post("/api/v1/agents/heartbeat", json_data={"status": "ACTIVE"})
         assert resp.status_code == 200
@@ -92,7 +95,9 @@ def test_send_heartbeat_updates_local_state(tmp_path):
 
     client = AuthenticatedClient(cfg, db=db, keystore=key_store)
 
-    fake_resp = httpx.Response(200, json={"server_time": 1760000000, "config_version": 1, "pending_jobs": False})
+    fake_resp = httpx.Response(
+        200, json={"server_time": 1760000000, "config_version": 1, "pending_jobs": False}
+    )
     with patch("httpx.Client.request", return_value=fake_resp):
         res = send_heartbeat(client)
         assert res["server_time"] == 1760000000

@@ -1,4 +1,5 @@
 """Flask CLI management commands."""
+
 import click
 from flask.cli import with_appcontext
 
@@ -37,7 +38,7 @@ def seed_demo_command():
             room_id="AI_LAB_101",
             location_label="Academic Block A, Room 101",
             position_label="Desk 07",
-            lifecycle_status=AssetLifecycleStatus.DRAFT
+            lifecycle_status=AssetLifecycleStatus.DRAFT,
         )
         db.session.add(asset1)
         click.echo(f"Created demo asset AI-LAB-PC-07 with ID {asset1.asset_id}.")
@@ -54,7 +55,7 @@ def seed_demo_command():
             room_id="CSE_LAB_204",
             location_label="Academic Block B, Room 204",
             position_label="Desk 12",
-            lifecycle_status=AssetLifecycleStatus.DRAFT
+            lifecycle_status=AssetLifecycleStatus.DRAFT,
         )
         db.session.add(asset2)
         click.echo(f"Created demo asset CSE-LAB-PC-12 with ID {asset2.asset_id}.")
@@ -65,7 +66,9 @@ def seed_demo_command():
 
 @click.command("create-admin")
 @click.option("--username", prompt=True, help="Admin username")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password")
+@click.option(
+    "--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password"
+)
 @with_appcontext
 def create_admin_command(username, password):
     """Create a new administrative user."""
@@ -87,18 +90,48 @@ def create_admin_command(username, password):
 def mark_offline_command(interval):
     """Mark devices that have missed heartbeats as OFFLINE."""
     from app.services.device_service import mark_offline_devices
+
     marked = mark_offline_devices(heartbeat_interval_seconds=interval)
     click.echo(f"Marked {len(marked)} devices as OFFLINE: {marked}")
 
 
 @click.command("purge-telemetry")
-@click.option("--older-than-days", default=30, type=int, help="Retention window threshold in days (default 30)")
+@click.option(
+    "--older-than-days",
+    default=30,
+    type=int,
+    help="Retention window threshold in days (default 30)",
+)
 @with_appcontext
 def purge_telemetry_command(older_than_days):
     """Purge high-frequency telemetry records older than retention threshold."""
     from app.services.telemetry_service import purge_telemetry
+
     deleted = purge_telemetry(older_than_days=older_than_days)
     click.echo(f"Purged {deleted} telemetry records older than {older_than_days} days.")
+
+
+@click.command("purge-nonces")
+@with_appcontext
+def purge_nonces_command():
+    """Purge expired request nonces."""
+    from app.security.replay import purge_expired_nonces
+
+    deleted = purge_expired_nonces()
+    click.echo(f"Purged {deleted} expired request nonces.")
+
+
+@click.command("purge-processed-events")
+@click.option(
+    "--older-than-days", default=2, type=int, help="Retention window threshold in days (default 2)"
+)
+@with_appcontext
+def purge_processed_events_command(older_than_days):
+    """Purge server-side processed idempotency events older than retention threshold."""
+    from app.services.idempotency_service import purge_processed_events
+
+    deleted = purge_processed_events(older_than_seconds=older_than_days * 86400)
+    click.echo(f"Purged {deleted} processed idempotency records older than {older_than_days} days.")
 
 
 def register_cli_commands(app):
@@ -107,3 +140,5 @@ def register_cli_commands(app):
     app.cli.add_command(create_admin_command)
     app.cli.add_command(mark_offline_command)
     app.cli.add_command(purge_telemetry_command)
+    app.cli.add_command(purge_nonces_command)
+    app.cli.add_command(purge_processed_events_command)

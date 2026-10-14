@@ -1,4 +1,5 @@
 """Hardware component collectors (BIOS, Motherboard, CPU, TPM) with graceful degradation."""
+
 import logging
 import platform
 import subprocess
@@ -21,7 +22,9 @@ def _run_cmd(cmd: list[str]) -> str | None:
 def collect_bios_serial() -> str | None:
     """Collect BIOS serial number across platforms."""
     if sys.platform == "win32":
-        return _run_cmd(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"])
+        return _run_cmd(
+            ["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"]
+        )
     for p in ["/sys/class/dmi/id/bios_serial", "/sys/class/dmi/id/product_serial"]:
         try:
             path = Path(p)
@@ -37,7 +40,14 @@ def collect_bios_serial() -> str | None:
 def collect_motherboard_serial() -> str | None:
     """Collect motherboard / baseboard serial number across platforms."""
     if sys.platform == "win32":
-        return _run_cmd(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_BaseBoard).SerialNumber"])
+        return _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_BaseBoard).SerialNumber",
+            ]
+        )
     for p in ["/sys/class/dmi/id/board_serial", "/sys/devices/virtual/dmi/id/board_serial"]:
         try:
             path = Path(p)
@@ -53,7 +63,9 @@ def collect_motherboard_serial() -> str | None:
 def collect_cpu_model() -> str | None:
     """Collect CPU model description."""
     if sys.platform == "win32":
-        out = _run_cmd(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor).Name"])
+        out = _run_cmd(
+            ["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor).Name"]
+        )
         if out:
             return out.splitlines()[0].strip() if out.splitlines() else out
     try:
@@ -78,12 +90,14 @@ def collect_cpu_model() -> str | None:
 def collect_tpm_identity() -> str | None:
     """Collect TPM endorsement or version identifier if present."""
     if sys.platform == "win32":
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "(Get-CimInstance -Namespace ROOT/CIMV2/Security/MicrosoftTpm -ClassName Win32_Tpm).ManufacturerId",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance -Namespace ROOT/CIMV2/Security/MicrosoftTpm -ClassName Win32_Tpm).ManufacturerId",
+            ]
+        )
         if out:
             return out
     else:

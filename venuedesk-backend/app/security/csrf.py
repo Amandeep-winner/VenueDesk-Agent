@@ -1,4 +1,5 @@
 """CSRF protection primitives for server-rendered admin interfaces."""
+
 import hmac
 import secrets
 from functools import wraps
@@ -23,6 +24,7 @@ def validate_csrf_token(token: str | None) -> bool:
 
 def require_csrf(f):
     """Decorator validating CSRF token on mutating HTTP requests."""
+
     @wraps(f)
     def decorated(*args, **kwargs):
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -30,8 +32,12 @@ def require_csrf(f):
             if not validate_csrf_token(token):
                 if request.is_json:
                     return {"error": "csrf_error", "message": "Invalid or missing CSRF token"}, 400
-                flash("Security verification failed: invalid or expired CSRF token. Please retry.", "danger")
+                flash(
+                    "Security verification failed: invalid or expired CSRF token. Please retry.",
+                    "danger",
+                )
                 target = request.referrer or "/admin/infrastructure/devices"
                 return redirect(target, code=303)
         return f(*args, **kwargs)
+
     return decorated

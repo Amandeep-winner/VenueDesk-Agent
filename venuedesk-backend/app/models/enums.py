@@ -1,4 +1,5 @@
 """Enum definitions for VenueDesk models."""
+
 from enum import Enum
 
 
@@ -62,6 +63,11 @@ class OsInstallationStatus(str, Enum):
     HISTORICAL = "HISTORICAL"
 
 
+class TokenScope(str, Enum):
+    ASSET = "ASSET"
+    DEVICE = "DEVICE"
+
+
 class EnrollmentTokenStatus(str, Enum):
     ACTIVE = "ACTIVE"
     USED = "USED"
@@ -97,6 +103,8 @@ class DeviceEventType(str, Enum):
     DEVICE_MOVED = "DEVICE_MOVED"
     OS_REINSTALL_DETECTED = "OS_REINSTALL_DETECTED"
     UNCLAIMED_DEVICE_DISCOVERED = "UNCLAIMED_DEVICE_DISCOVERED"
+    FINGERPRINT_MIGRATED = "FINGERPRINT_MIGRATED"
+    OS_INSTALLATION_ADDED = "OS_INSTALLATION_ADDED"
 
 
 class JobType(str, Enum):
@@ -138,6 +146,8 @@ class AuditAction(str, Enum):
     TOKEN_CREATED = "TOKEN_CREATED"
     TOKEN_REVOKED = "TOKEN_REVOKED"
     CREDENTIAL_ROTATED = "CREDENTIAL_ROTATED"
+    DEVICE_SUSPENDED = "DEVICE_SUSPENDED"
+    DEVICE_RETIRED = "DEVICE_RETIRED"
 
 
 class VerificationMethod(str, Enum):
@@ -150,3 +160,16 @@ class VerificationMethod(str, Enum):
 class UserRole(str, Enum):
     INFRA_ADMIN = "infra_admin"
     INFRA_VIEWER = "infra_viewer"
+
+
+class EvidenceSource(str, Enum):
+    AGENT_INVENTORY = "AGENT_INVENTORY"
+    AGENT_IDENTITY = "AGENT_IDENTITY"
+    ADMIN = "ADMIN"
+    RECOVERY = "RECOVERY"
+
+
+class FieldMatchResult(str, Enum):
+    MATCH = "MATCH"
+    MISMATCH = "MISMATCH"
+    UNKNOWN = "UNKNOWN"

@@ -1,4 +1,5 @@
 """Hardware and system collectors with graceful degradation."""
+
 from typing import Any
 
 from agent.collectors.gpu import collect_gpus

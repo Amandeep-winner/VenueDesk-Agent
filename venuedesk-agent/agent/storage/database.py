@@ -1,4 +1,5 @@
 """Agent local SQLite database for state management and continuity."""
+
 import sqlite3
 import uuid
 from pathlib import Path
@@ -61,6 +62,14 @@ class AgentDatabase:
             instance_id = str(uuid.uuid4())
             self.set_state("agent_instance_id", instance_id)
         return instance_id
+
+    def get_os_installation_id(self) -> str:
+        """Retrieve persistent local os_installation_id or generate a fresh UUID4."""
+        os_inst_id = self.get_state("os_installation_id")
+        if not os_inst_id:
+            os_inst_id = str(uuid.uuid4())
+            self.set_state("os_installation_id", os_inst_id)
+        return os_inst_id
 
     def get_device_id(self) -> str | None:
         """Get enrolled device_id (e.g. VD-DEVICE-XXXXXXXX) if registered."""

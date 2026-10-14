@@ -1,4 +1,5 @@
 """Unit and integration tests for Phase 8: Recovery & Verification Workflows."""
+
 import base64
 import hashlib
 import time
@@ -38,7 +39,9 @@ from app.models import (
 from app.security.tokens import create_token_for_asset
 
 
-def create_asset_and_device(app, hostname="ws-recover-01", mb_serial="MB-REC-111", uuid_str="UUID-REC-222"):
+def create_asset_and_device(
+    app, hostname="ws-recover-01", mb_serial="MB-REC-111", uuid_str="UUID-REC-222"
+):
     """Helper to set up an institutional asset, physical device, active link, and trusted evidence."""
     key = Ed25519PrivateKey.generate()
     pub_raw = key.public_key().public_bytes(
@@ -145,7 +148,9 @@ def ensure_admin(app):
     return {"Authorization": "Basic " + base64.b64encode(b"phase8_admin:adminpass").decode("ascii")}
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1) -> dict[str, str]:
+def sign_req(
+    dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1
+) -> dict[str, str]:
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     b_hash = hashlib.sha256(body).hexdigest()
@@ -235,7 +240,9 @@ def test_os_reinstall_recovery_end_to_end(client, app):
         assert dev.status == DeviceStatus.PENDING_REVERIFICATION
 
         # Check OS reinstall event
-        evt = DeviceEvent.query.filter_by(device_id=dev.id, event_type=DeviceEventType.OS_REINSTALL_DETECTED).first()
+        evt = DeviceEvent.query.filter_by(
+            device_id=dev.id, event_type=DeviceEventType.OS_REINSTALL_DETECTED
+        ).first()
         assert evt is not None
         assert evt.severity == EventSeverity.HIGH
 
@@ -248,7 +255,9 @@ def test_os_reinstall_recovery_end_to_end(client, app):
     admin_list_resp = client.get("/api/v1/admin/devices/recovery-requests", headers=admin_headers)
     assert admin_list_resp.status_code == 200
     list_data = admin_list_resp.get_json()
-    assert any(r["id"] == rec_req_id and r["device_id"] == dev_id for r in list_data["recovery_requests"])
+    assert any(
+        r["id"] == rec_req_id and r["device_id"] == dev_id for r in list_data["recovery_requests"]
+    )
 
     # 6. Admin approves recovery
     approve_resp = client.post(
@@ -276,22 +285,30 @@ def test_os_reinstall_recovery_end_to_end(client, app):
         assert dev.device_public_key == new_pub_b64
 
         # Old OS must be HISTORICAL
-        old_os = OSInstallation.query.filter_by(device_id=dev.id, os_machine_id_hash="mid-ubuntu-22").first()
+        old_os = OSInstallation.query.filter_by(
+            device_id=dev.id, os_machine_id_hash="mid-ubuntu-22"
+        ).first()
         assert old_os.status == OsInstallationStatus.HISTORICAL
 
         # New OS must be ACTIVE
-        new_os = OSInstallation.query.filter_by(device_id=dev.id, os_machine_id_hash="mid-ubuntu-24-fresh").first()
+        new_os = OSInstallation.query.filter_by(
+            device_id=dev.id, os_machine_id_hash="mid-ubuntu-24-fresh"
+        ).first()
         assert new_os is not None
         assert new_os.status == OsInstallationStatus.ACTIVE
         assert new_os.os_version == "24.04"
 
         # Asset link preserved to the same asset
-        active_link = AssetDeviceLink.query.filter_by(device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE).first()
+        active_link = AssetDeviceLink.query.filter_by(
+            device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE
+        ).first()
         assert active_link is not None
         assert active_link.asset.asset_id == asset_id
 
         # Audit log logged
-        audit = AuditLog.query.filter_by(action=AuditAction.CREDENTIAL_ROTATED, entity_id=dev.device_id).first()
+        audit = AuditLog.query.filter_by(
+            action=AuditAction.CREDENTIAL_ROTATED, entity_id=dev.device_id
+        ).first()
         assert audit is not None
 
     # 9. Verify authentication with new key and credential_version=2 works
@@ -468,7 +485,9 @@ def test_physical_verification_workflow(client, app):
         assert ev.trusted is True
 
         # Link references verification record
-        link = AssetDeviceLink.query.filter_by(device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE).first()
+        link = AssetDeviceLink.query.filter_by(
+            device_id=dev.id, relationship_status=RelationshipStatus.ACTIVE
+        ).first()
         assert link.verification_id == ver_id
 
         # Verification audit record
@@ -484,14 +503,18 @@ def test_physical_verification_workflow(client, app):
         assert asset.lifecycle_status == AssetLifecycleStatus.IN_SERVICE
 
         # Audit log entry exists
-        audit = AuditLog.query.filter_by(action=AuditAction.ASSET_VERIFIED, entity_id=dev.device_id).first()
+        audit = AuditLog.query.filter_by(
+            action=AuditAction.ASSET_VERIFIED, entity_id=dev.device_id
+        ).first()
         assert audit is not None
 
 
 def test_motherboard_replacement_workflow(client, app):
     """Motherboard replacement workflow: closes old link, retires old device, and re-pairs new device to same asset."""
     admin_headers = ensure_admin(app)
-    dev1_id, asset_id, _ = create_asset_and_device(app, hostname="ws-mobo-01", mb_serial="MB-BROKEN-01")
+    dev1_id, asset_id, _ = create_asset_and_device(
+        app, hostname="ws-mobo-01", mb_serial="MB-BROKEN-01"
+    )
 
     # 1. Admin triggers motherboard replacement for dev1
     replace_resp = client.post(
@@ -561,8 +584,12 @@ def test_motherboard_replacement_workflow(client, app):
         asset = Asset.query.filter_by(asset_id=asset_id).first()
         assert len(asset.links) == 2
 
-        closed_links = [lk for lk in asset.links if lk.relationship_status == RelationshipStatus.CLOSED]
-        active_links = [lk for lk in asset.links if lk.relationship_status == RelationshipStatus.ACTIVE]
+        closed_links = [
+            lk for lk in asset.links if lk.relationship_status == RelationshipStatus.CLOSED
+        ]
+        active_links = [
+            lk for lk in asset.links if lk.relationship_status == RelationshipStatus.ACTIVE
+        ]
 
         assert len(closed_links) == 1
         assert closed_links[0].device.device_id == dev1_id

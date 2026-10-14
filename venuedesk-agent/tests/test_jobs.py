@@ -1,4 +1,5 @@
 """Unit and integration tests for agent remote job handlers, execution, and security."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,7 +31,9 @@ def test_agent_source_tree_contains_zero_shell_equals_true():
         if "shell=True" in content or "shell = True" in content:
             violating_files.append(str(py_file.relative_to(agent_src_dir)))
 
-    assert not violating_files, f"Security violation: Found shell=True in agent source files: {violating_files}"
+    assert not violating_files, (
+        f"Security violation: Found shell=True in agent source files: {violating_files}"
+    )
 
 
 def test_token_and_secret_redaction():
@@ -167,7 +170,9 @@ def test_job_executor_unallowlisted_job_rejected(tmp_path):
     cfg = AgentConfig(state_dir=str(tmp_path))
     executor = JobExecutor(cfg)
 
-    status, result, error = executor.execute("RUN_ARBITRARY_PYTHON", {"code": "import os; os.system('whoami')"})
+    status, result, error = executor.execute(
+        "RUN_ARBITRARY_PYTHON", {"code": "import os; os.system('whoami')"}
+    )
     assert status == "FAILED"
     assert result is None
     assert "job_type_not_allowed" in error

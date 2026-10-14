@@ -1,4 +1,5 @@
 """Exponential backoff retry utility with jitter and Retry-After support."""
+
 import logging
 import random
 import time
@@ -15,18 +16,25 @@ class RetryPolicy:
     def __init__(
         self,
         max_attempts: int = 3,
-        initial_interval: float = 1.0,
+        initial_interval: float = 2.0,
         backoff_multiplier: float = 2.0,
-        max_interval: float = 60.0,
+        max_interval: float = 300.0,
         jitter_factor: float = 0.2,
+        full_jitter: bool = False,
     ) -> None:
         self.max_attempts = max_attempts
         self.initial_interval = initial_interval
         self.backoff_multiplier = backoff_multiplier
         self.max_interval = max_interval
         self.jitter_factor = jitter_factor
+        self.full_jitter = full_jitter
 
-    def compute_delay(self, attempt: int, response: httpx.Response | None = None) -> float:
+    def compute_delay(
+        self,
+        attempt: int,
+        response: httpx.Response | None = None,
+        full_jitter: bool | None = None,
+    ) -> float:
         """Compute delay in seconds for given attempt, honoring Retry-After header if present."""
         if response is not None:
             retry_after = response.headers.get("Retry-After")
@@ -39,10 +47,16 @@ class RetryPolicy:
         delay = self.initial_interval * (self.backoff_multiplier ** (attempt - 1))
         delay = min(delay, self.max_interval)
 
-        # Apply symmetric jitter
-        jitter_range = delay * self.jitter_factor
-        jittered = delay + random.uniform(-jitter_range, jitter_range)
-        return max(0.1, jittered)
+        use_full_jitter = self.full_jitter if full_jitter is None else full_jitter
+        if use_full_jitter and self.jitter_factor > 0.0:
+            return random.uniform(0.0, delay)
+
+        if self.jitter_factor > 0.0:
+            jitter_range = delay * self.jitter_factor
+            jittered = delay + random.uniform(-jitter_range, jitter_range)
+            return max(0.1, min(jittered, self.max_interval))
+
+        return delay
 
     def execute(self, func: Callable[[], httpx.Response]) -> httpx.Response:
         """Execute HTTP call with retry logic on network errors and transient HTTP status codes."""
@@ -90,3 +104,18 @@ class RetryPolicy:
         if last_exception is not None:
             raise last_exception
         raise RuntimeError("Retry policy reached unexpected termination")
+
+
+def classify_http_status(status_code: int) -> str:
+    """Classify HTTP response status code into retry and error disposition."""
+    if status_code in (400, 422):
+        return "FAILED_PERMANENT"
+    if status_code == 401:
+        return "AUTH_FAILED"
+    if status_code == 403:
+        return "DEVICE_BLOCKED"
+    if status_code in (404, 410):
+        return "DROP"
+    if status_code in (408, 429) or 500 <= status_code < 600:
+        return "TRANSIENT"
+    return "UNKNOWN"

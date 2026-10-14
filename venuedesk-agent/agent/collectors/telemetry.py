@@ -1,4 +1,5 @@
 """Telemetry metric sample collector with graceful degradation."""
+
 import logging
 import os
 import sys

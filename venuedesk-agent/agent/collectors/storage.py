@@ -1,4 +1,5 @@
 """Storage and disk collector with graceful degradation."""
+
 import json
 import logging
 import subprocess
@@ -23,12 +24,14 @@ def collect_disks() -> list[str]:
     disks: list[str] = []
 
     if sys.platform == "win32":
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-CimInstance Win32_DiskDrive | ForEach-Object { $_.SerialNumber }",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_DiskDrive | ForEach-Object { $_.SerialNumber }",
+            ]
+        )
         if out:
             for line in out.splitlines():
                 s = line.strip()

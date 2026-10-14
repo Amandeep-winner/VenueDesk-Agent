@@ -1,11 +1,14 @@
 """Central export of all database models and domain enums."""
+
 from app.models.asset import Asset, AssetSequence, generate_next_asset_id
 from app.models.audit import AuditLog
 from app.models.device import (
     AssetDeviceLink,
+    DeviceCredential,
     DeviceIdentityEvidence,
     DeviceInventory,
     DeviceRecoveryRequest,
+    HardwareChangeRecord,
     OSInstallation,
     PhysicalDevice,
     Verification,
@@ -23,17 +26,20 @@ from app.models.enums import (
     EndpointType,
     EnrollmentTokenStatus,
     EventSeverity,
+    EvidenceSource,
+    FieldMatchResult,
     JobStatus,
     JobType,
     OsFamily,
     OsInstallationStatus,
     RelationshipStatus,
+    TokenScope,
     UserRole,
     VerificationMethod,
 )
 from app.models.job import DeviceJob
 from app.models.nonce import RequestNonce
-from app.models.telemetry import DeviceEvent, Telemetry
+from app.models.telemetry import DeviceEvent, ProcessedEvent, Telemetry
 from app.models.user import User
 
 __all__ = [
@@ -46,6 +52,7 @@ __all__ = [
     "AssetVerificationStatus",
     "AuditAction",
     "AuditLog",
+    "DeviceCredential",
     "DeviceEvent",
     "DeviceEventType",
     "DeviceIdentityEvidence",
@@ -57,15 +64,20 @@ __all__ = [
     "EnrollmentToken",
     "EnrollmentTokenStatus",
     "EventSeverity",
+    "EvidenceSource",
+    "FieldMatchResult",
+    "HardwareChangeRecord",
     "JobStatus",
     "JobType",
     "OSInstallation",
     "OsFamily",
     "OsInstallationStatus",
     "PhysicalDevice",
+    "ProcessedEvent",
     "RelationshipStatus",
     "RequestNonce",
     "Telemetry",
+    "TokenScope",
     "User",
     "UserRole",
     "Verification",

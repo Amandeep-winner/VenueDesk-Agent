@@ -1,4 +1,5 @@
 """Network adapter and MAC address collectors with graceful degradation."""
+
 import logging
 import socket
 
@@ -26,7 +27,12 @@ def collect_nics() -> list[str]:
             for snic in snic_list:
                 # AF_LINK on Windows/BSD/macOS, AF_PACKET on Linux
                 is_link = False
-                if hasattr(psutil, "AF_LINK") and snic.family == psutil.AF_LINK or hasattr(socket, "AF_PACKET") and snic.family == socket.AF_PACKET:
+                if (
+                    hasattr(psutil, "AF_LINK")
+                    and snic.family == psutil.AF_LINK
+                    or hasattr(socket, "AF_PACKET")
+                    and snic.family == socket.AF_PACKET
+                ):
                     is_link = True
 
                 if is_link and snic.address:

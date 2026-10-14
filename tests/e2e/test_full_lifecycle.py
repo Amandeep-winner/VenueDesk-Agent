@@ -13,6 +13,7 @@ Drives an in-process server through the complete endpoint lifecycle:
 10. Clone / Duplicate Detection (Suspension on Cloned Credentials)
 11. Device Revocation (Definitive Cryptographic Termination)
 """
+
 import base64
 import hashlib
 import json
@@ -66,7 +67,14 @@ def client(app):
     return app.test_client()
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1) -> dict[str, str]:
+def sign_req(
+    dev_id: str,
+    key: Ed25519PrivateKey,
+    method: str,
+    path: str,
+    body: bytes,
+    key_ver: int = 1,
+) -> dict[str, str]:
     """Helper generating standard X-Device-ID and Ed25519 signature headers."""
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
@@ -113,10 +121,13 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     # STAGE 2: Generate Pairing Token
     # =========================================================================
     from app.api.agents import reset_rate_limits
+
     reset_rate_limits()
 
     with app.app_context():
-        raw_token, _tok_row = create_token_for_asset(asset_pk, created_by="lifecycle_admin")
+        raw_token, _tok_row = create_token_for_asset(
+            asset_pk, created_by="lifecycle_admin"
+        )
         db.session.commit()
     assert raw_token.startswith("PAIR-")
 
@@ -138,8 +149,10 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     ).decode("ascii")
 
     salt = b"venuedesk-default-salt-32-chars-long!"
+
     def h_ev(val):
         import hmac
+
         return hmac.new(salt, val.encode(), hashlib.sha256).hexdigest()
 
     evidence_v1 = {
@@ -224,7 +237,11 @@ def test_full_endpoint_lifecycle_e2e(client, app):
         dev_row = PhysicalDevice.query.filter_by(device_id=device_id).first()
         assert dev_row.status == DeviceStatus.ACTIVE
         assert dev_row.last_verified_at is not None
-        active_l = next(l for l in dev_row.links if l.relationship_status == RelationshipStatus.ACTIVE)
+        active_l = next(
+            l
+            for l in dev_row.links
+            if l.relationship_status == RelationshipStatus.ACTIVE
+        )
         assert active_l.asset.lifecycle_status == AssetLifecycleStatus.IN_SERVICE
         assert active_l.asset.verification_status == AssetVerificationStatus.VERIFIED
 
@@ -232,7 +249,9 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     # STAGE 5: Authenticated Heartbeat & Telemetry Ingestion
     # =========================================================================
     hb_body = json.dumps({"agent_instance_id": "agent-inst-ubuntu-42"}).encode()
-    hb_headers = sign_req(device_id, agent_key_v1, "POST", "/api/v1/agents/heartbeat", hb_body)
+    hb_headers = sign_req(
+        device_id, agent_key_v1, "POST", "/api/v1/agents/heartbeat", hb_body
+    )
     hb_headers["Content-Type"] = "application/json"
     hb_resp = client.post("/api/v1/agents/heartbeat", data=hb_body, headers=hb_headers)
     assert hb_resp.status_code == 200
@@ -260,9 +279,13 @@ def test_full_endpoint_lifecycle_e2e(client, app):
         },
     ]
     telem_body = json.dumps({"samples": telem_samples}).encode()
-    telem_headers = sign_req(device_id, agent_key_v1, "POST", "/api/v1/agents/telemetry", telem_body)
+    telem_headers = sign_req(
+        device_id, agent_key_v1, "POST", "/api/v1/agents/telemetry", telem_body
+    )
     telem_headers["Content-Type"] = "application/json"
-    telem_resp = client.post("/api/v1/agents/telemetry", data=telem_body, headers=telem_headers)
+    telem_resp = client.post(
+        "/api/v1/agents/telemetry", data=telem_body, headers=telem_headers
+    )
     assert telem_resp.status_code == 200
     assert telem_resp.get_json()["count"] == 2
 
@@ -281,14 +304,20 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     updated_inv["gpus"] = ["NVIDIA GeForce RTX 4080"]
     updated_inv["disks"] = ["Crucial T700 2TB"]
 
-    inv_body = json.dumps({
-        "inventory": updated_inv,
-        "identity_evidence": updated_evidence,
-        "os": enroll_payload["os"],
-    }).encode()
-    inv_headers = sign_req(device_id, agent_key_v1, "POST", "/api/v1/agents/inventory", inv_body)
+    inv_body = json.dumps(
+        {
+            "inventory": updated_inv,
+            "identity_evidence": updated_evidence,
+            "os": enroll_payload["os"],
+        }
+    ).encode()
+    inv_headers = sign_req(
+        device_id, agent_key_v1, "POST", "/api/v1/agents/inventory", inv_body
+    )
     inv_headers["Content-Type"] = "application/json"
-    inv_resp = client.post("/api/v1/agents/inventory", data=inv_body, headers=inv_headers)
+    inv_resp = client.post(
+        "/api/v1/agents/inventory", data=inv_body, headers=inv_headers
+    )
     assert inv_resp.status_code == 200
 
     # Device remains ACTIVE (spec §4.6: component upgrades do not invalidate device)
@@ -314,7 +343,9 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     reinstall_ts = int(time.time())
     reinstall_nonce = uuid.uuid4().hex
     reinstall_proof = base64.b64encode(
-        agent_key_v2.sign(f"recover\n{pub_b64_v2}\n{reinstall_ts}\n{reinstall_nonce}".encode())
+        agent_key_v2.sign(
+            f"recover\n{pub_b64_v2}\n{reinstall_ts}\n{reinstall_nonce}".encode()
+        )
     ).decode("ascii")
 
     recover_payload = {
@@ -349,16 +380,36 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     assert appr_resp.get_json()["credential_version"] == 2
 
     # Verify device now authenticates with the NEW key (v2)
-    hb_v2_body = json.dumps({"agent_instance_id": "agent-inst-ubuntu-reinstalled"}).encode()
-    hb_v2_headers = sign_req(device_id, agent_key_v2, "POST", "/api/v1/agents/heartbeat", hb_v2_body, key_ver=2)
+    hb_v2_body = json.dumps(
+        {"agent_instance_id": "agent-inst-ubuntu-reinstalled"}
+    ).encode()
+    hb_v2_headers = sign_req(
+        device_id,
+        agent_key_v2,
+        "POST",
+        "/api/v1/agents/heartbeat",
+        hb_v2_body,
+        key_ver=2,
+    )
     hb_v2_headers["Content-Type"] = "application/json"
-    hb_v2_resp = client.post("/api/v1/agents/heartbeat", data=hb_v2_body, headers=hb_v2_headers)
+    hb_v2_resp = client.post(
+        "/api/v1/agents/heartbeat", data=hb_v2_body, headers=hb_v2_headers
+    )
     assert hb_v2_resp.status_code == 200
 
     # Old key v1 must be rejected
-    hb_old_headers = sign_req(device_id, agent_key_v1, "POST", "/api/v1/agents/heartbeat", hb_v2_body, key_ver=1)
+    hb_old_headers = sign_req(
+        device_id,
+        agent_key_v1,
+        "POST",
+        "/api/v1/agents/heartbeat",
+        hb_v2_body,
+        key_ver=1,
+    )
     hb_old_headers["Content-Type"] = "application/json"
-    hb_old_resp = client.post("/api/v1/agents/heartbeat", data=hb_v2_body, headers=hb_old_headers)
+    hb_old_resp = client.post(
+        "/api/v1/agents/heartbeat", data=hb_v2_body, headers=hb_old_headers
+    )
     assert hb_old_resp.status_code == 401
 
     # Verify OS installations: prior OS is HISTORICAL, new is ACTIVE
@@ -386,9 +437,13 @@ def test_full_endpoint_lifecycle_e2e(client, app):
         "agent_instance_id": "agent-inst-win-dualboot",
     }
     win_body = json.dumps(win_payload).encode("utf-8")
-    win_headers = sign_req(device_id, agent_key_v2, "POST", "/api/v1/agents/inventory", win_body, key_ver=2)
+    win_headers = sign_req(
+        device_id, agent_key_v2, "POST", "/api/v1/agents/inventory", win_body, key_ver=2
+    )
     win_headers["Content-Type"] = "application/json"
-    win_resp = client.post("/api/v1/agents/inventory", data=win_body, headers=win_headers)
+    win_resp = client.post(
+        "/api/v1/agents/inventory", data=win_body, headers=win_headers
+    )
     assert win_resp.status_code == 200
 
     # Verify both Linux and Windows OSInstallation records exist under same PhysicalDevice
@@ -416,7 +471,9 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     # Enroll the new hardware motherboard replacement against original asset
     mobo_new_key = Ed25519PrivateKey.generate()
     mobo_new_pub_b64 = base64.b64encode(
-        mobo_new_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        mobo_new_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
     ).decode("ascii")
 
     mobo_ts = int(time.time())
@@ -461,14 +518,20 @@ def test_full_endpoint_lifecycle_e2e(client, app):
     # Simulate a cloned image where a second machine uses the new device's key
     # but presents a different agent_instance_id in rapid succession
     dup_body_1 = json.dumps({"agent_instance_id": "inst-replacement-mobo"}).encode()
-    dup_h1 = sign_req(new_device_id, mobo_new_key, "POST", "/api/v1/agents/heartbeat", dup_body_1)
+    dup_h1 = sign_req(
+        new_device_id, mobo_new_key, "POST", "/api/v1/agents/heartbeat", dup_body_1
+    )
     dup_h1["Content-Type"] = "application/json"
     r1 = client.post("/api/v1/agents/heartbeat", data=dup_body_1, headers=dup_h1)
     assert r1.status_code == 200
 
     # Conflicting heartbeat from clone instance within window
-    dup_body_2 = json.dumps({"agent_instance_id": "rogue-cloned-image-instance"}).encode()
-    dup_h2 = sign_req(new_device_id, mobo_new_key, "POST", "/api/v1/agents/heartbeat", dup_body_2)
+    dup_body_2 = json.dumps(
+        {"agent_instance_id": "rogue-cloned-image-instance"}
+    ).encode()
+    dup_h2 = sign_req(
+        new_device_id, mobo_new_key, "POST", "/api/v1/agents/heartbeat", dup_body_2
+    )
     dup_h2["Content-Type"] = "application/json"
     r2 = client.post("/api/v1/agents/heartbeat", data=dup_body_2, headers=dup_h2)
     assert r2.status_code == 403
@@ -494,9 +557,19 @@ def test_full_endpoint_lifecycle_e2e(client, app):
         db.session.commit()
 
     # All subsequent requests from the revoked endpoint receive 403 device_blocked
-    post_revoke_body = json.dumps({"agent_instance_id": "inst-replacement-mobo"}).encode()
-    pr_headers = sign_req(new_device_id, mobo_new_key, "POST", "/api/v1/agents/heartbeat", post_revoke_body)
+    post_revoke_body = json.dumps(
+        {"agent_instance_id": "inst-replacement-mobo"}
+    ).encode()
+    pr_headers = sign_req(
+        new_device_id,
+        mobo_new_key,
+        "POST",
+        "/api/v1/agents/heartbeat",
+        post_revoke_body,
+    )
     pr_headers["Content-Type"] = "application/json"
-    pr_resp = client.post("/api/v1/agents/heartbeat", data=post_revoke_body, headers=pr_headers)
+    pr_resp = client.post(
+        "/api/v1/agents/heartbeat", data=post_revoke_body, headers=pr_headers
+    )
     assert pr_resp.status_code == 403
     assert pr_resp.get_json()["error"] == "device_blocked"

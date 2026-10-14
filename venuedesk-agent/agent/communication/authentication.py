@@ -1,4 +1,5 @@
 """Agent request signing and header construction for device authentication."""
+
 import hashlib
 import time
 import uuid

@@ -1,15 +1,25 @@
 """Admin device management and inspection API endpoints."""
+
 from datetime import UTC, datetime
 
 from flask import Blueprint, g, jsonify, request
 
 from app.extensions import db
-from app.models import DeviceRecoveryRequest, DeviceStatus, PhysicalDevice, UserRole
+from app.models import (
+    ActorType,
+    AuditAction,
+    AuditLog,
+    DeviceRecoveryRequest,
+    DeviceStatus,
+    PhysicalDevice,
+    UserRole,
+)
 from app.security.rbac import require_role
 from app.services.identity_service import (
+    LinkConflictError,
     approve_device_recovery,
     approve_hardware_change,
-    pair_unclaimed_device,
+    pair_device,
     replace_device_endpoint,
     verify_device_physical,
 )
@@ -59,25 +69,31 @@ def get_telemetry_endpoint(device_id: str):
             pass
 
     records = get_device_telemetry(device.id, from_time=from_dt, to_time=to_dt, limit=limit)
-    return jsonify({
-        "device_id": device.device_id,
-        "count": len(records),
-        "telemetry": records,
-    }), 200
+    return jsonify(
+        {
+            "device_id": device.device_id,
+            "count": len(records),
+            "telemetry": records,
+        }
+    ), 200
 
 
 @devices_bp.route("/<device_id>/approve-hardware-change", methods=["POST"])
 @require_role(UserRole.INFRA_ADMIN)
 def approve_hardware_change_endpoint(device_id: str):
     """Approve observed hardware changes, marking latest snapshot trusted and restoring ACTIVE status."""
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
     try:
         dev = approve_hardware_change(device_id, admin_name=admin_name)
-        return jsonify({
-            "status": "approved",
-            "device_id": dev.device_id,
-            "device_status": dev.status.value,
-        }), 200
+        return jsonify(
+            {
+                "status": "approved",
+                "device_id": dev.device_id,
+                "device_status": dev.status.value,
+            }
+        ), 200
     except ValueError as exc:
         return jsonify({"error": "not_found", "message": str(exc)}), 404
 
@@ -90,14 +106,16 @@ def get_unclaimed_devices_endpoint():
     res = []
     for d in unclaimed:
         inv = d.inventory
-        res.append({
-            "device_id": d.device_id,
-            "status": d.status.value,
-            "first_seen": d.first_seen.isoformat() if d.first_seen else None,
-            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-            "hostname": inv.hostname if inv else "unknown",
-            "ip_addresses": inv.ip_addresses if inv else [],
-        })
+        res.append(
+            {
+                "device_id": d.device_id,
+                "status": d.status.value,
+                "first_seen": d.first_seen.isoformat() if d.first_seen else None,
+                "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+                "hostname": inv.hostname if inv else "unknown",
+                "ip_addresses": inv.ip_addresses if inv else [],
+            }
+        )
     return jsonify({"count": len(res), "devices": res}), 200
 
 
@@ -105,21 +123,39 @@ def get_unclaimed_devices_endpoint():
 @require_role(UserRole.INFRA_ADMIN)
 def pair_device_endpoint(device_id: str):
     """Pair an unclaimed device to an institutional asset."""
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
     payload = request.get_json(silent=True) or {}
     asset_id = payload.get("asset_id")
 
     if not asset_id:
-        return jsonify({"error": "invalid_payload", "message": "Missing 'asset_id' in payload"}), 400
+        return jsonify(
+            {"error": "invalid_payload", "message": "Missing 'asset_id' in payload"}
+        ), 400
+
+    reassignment = bool(payload.get("reassignment", False))
+    reason = payload.get("reason")
 
     try:
-        dev, asset = pair_unclaimed_device(device_id, asset_id, admin_name=admin_name)
-        return jsonify({
-            "status": "paired",
-            "device_id": dev.device_id,
-            "asset_id": asset.asset_id,
-            "device_status": dev.status.value,
-        }), 200
+        dev, asset, _link = pair_device(
+            device_identifier=device_id,
+            asset_identifier=asset_id,
+            admin_name=admin_name,
+            actor_role=UserRole.INFRA_ADMIN,
+            reassignment=reassignment,
+            reason=reason,
+        )
+        return jsonify(
+            {
+                "status": "paired",
+                "device_id": dev.device_id,
+                "asset_id": asset.asset_id,
+                "device_status": dev.status.value,
+            }
+        ), 200
+    except LinkConflictError as exc:
+        return jsonify({"error": "link_conflict", "message": str(exc)}), 409
     except ValueError as exc:
         return jsonify({"error": "bad_request", "message": str(exc)}), 400
 
@@ -128,16 +164,20 @@ def pair_device_endpoint(device_id: str):
 @require_role(UserRole.INFRA_ADMIN)
 def approve_recovery_endpoint(device_id: str):
     """Approve a pending OS reinstall recovery request for an endpoint."""
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
     try:
         dev, rec_req = approve_device_recovery(device_id, admin_name=admin_name)
-        return jsonify({
-            "status": "approved",
-            "device_id": dev.device_id,
-            "credential_version": dev.credential_version,
-            "device_status": dev.status.value,
-            "recovery_request_id": rec_req.id,
-        }), 200
+        return jsonify(
+            {
+                "status": "approved",
+                "device_id": dev.device_id,
+                "credential_version": dev.credential_version,
+                "device_status": dev.status.value,
+                "recovery_request_id": rec_req.id,
+            }
+        ), 200
     except ValueError as exc:
         return jsonify({"error": "not_found", "message": str(exc)}), 404
 
@@ -146,7 +186,9 @@ def approve_recovery_endpoint(device_id: str):
 @require_role(UserRole.INFRA_ADMIN)
 def verify_device_endpoint(device_id: str):
     """Perform physical verification of device-to-asset continuity."""
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
     payload = request.get_json(silent=True) or {}
 
     verification_method = payload.get("verification_method", "ADMIN_CONFIRMATION")
@@ -165,13 +207,15 @@ def verify_device_endpoint(device_id: str):
             observed_location=observed_location,
             notes=notes,
         )
-        return jsonify({
-            "status": "verified",
-            "device_id": dev.device_id,
-            "asset_id": asset.asset_id if asset else None,
-            "verification_id": ver.id,
-            "device_status": dev.status.value,
-        }), 200
+        return jsonify(
+            {
+                "status": "verified",
+                "device_id": dev.device_id,
+                "asset_id": asset.asset_id if asset else None,
+                "verification_id": ver.id,
+                "device_status": dev.status.value,
+            }
+        ), 200
     except ValueError as exc:
         return jsonify({"error": "not_found", "message": str(exc)}), 404
 
@@ -180,7 +224,9 @@ def verify_device_endpoint(device_id: str):
 @require_role(UserRole.INFRA_ADMIN)
 def replace_endpoint_endpoint(device_id: str):
     """Replace an endpoint hardware/motherboard: retires old device, closes link, and generates new token for asset."""
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
     payload = request.get_json(silent=True) or {}
     reason = payload.get("reason", "Endpoint hardware/motherboard replacement")
 
@@ -190,15 +236,61 @@ def replace_endpoint_endpoint(device_id: str):
             admin_name=admin_name,
             reason=reason,
         )
-        return jsonify({
-            "status": "endpoint_replaced",
-            "old_device_id": dev.device_id,
-            "asset_id": asset.asset_id,
-            "new_pairing_token": raw_token,
-            "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
-        }), 200
+        return jsonify(
+            {
+                "status": "endpoint_replaced",
+                "old_device_id": dev.device_id,
+                "asset_id": asset.asset_id,
+                "new_pairing_token": raw_token,
+                "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+            }
+        ), 200
     except ValueError as exc:
         return jsonify({"error": "bad_request", "message": str(exc)}), 400
+
+
+@devices_bp.route("/<device_id>/os-token", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def create_os_enrollment_token_endpoint(device_id: str):
+    """Generate a single-use device-scoped OS enrollment token to add an OS to an existing device."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+    payload = request.get_json(silent=True) or {}
+    ttl_hours = int(payload.get("ttl_hours", 24))
+
+    from app.models.device import AssetDeviceLink
+    from app.models.enums import RelationshipStatus
+    from app.security.tokens import create_token_for_device
+
+    active_link = AssetDeviceLink.query.filter_by(
+        device_id=device.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).first()
+    asset_id = active_link.asset_id if active_link else None
+
+    raw_token, token_obj = create_token_for_device(
+        device_id=device.id,
+        created_by=admin_name,
+        ttl_hours=ttl_hours,
+        asset_id=asset_id,
+    )
+    db.session.commit()
+
+    return jsonify(
+        {
+            "raw_token": raw_token,
+            "token_hash": token_obj.token_hash,
+            "device_id": device.device_id,
+            "asset_id": active_link.asset.asset_id if active_link and active_link.asset else None,
+            "scope": "DEVICE",
+            "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+        }
+    ), 201
 
 
 @devices_bp.route("/recovery-requests", methods=["GET"])
@@ -213,13 +305,15 @@ def get_recovery_requests_endpoint():
     )
     result = []
     for r in reqs:
-        result.append({
-            "id": r.id,
-            "device_id": r.device.device_id if r.device else None,
-            "status": r.status,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "new_agent_instance_id": r.new_agent_instance_id,
-        })
+        result.append(
+            {
+                "id": r.id,
+                "device_id": r.device.device_id if r.device else None,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "new_agent_instance_id": r.new_agent_instance_id,
+            }
+        )
     return jsonify({"count": len(result), "recovery_requests": result}), 200
 
 
@@ -238,10 +332,13 @@ def create_device_job_endpoint(device_id: str):
 
     job_payload = payload.get("payload", {})
     expires_in = payload.get("expires_in_seconds", 3600)
-    admin_name = getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
 
     try:
         from app.services import job_service
+
         job = job_service.create_job(
             device_identifier=device.id,
             job_type=job_type,
@@ -249,14 +346,16 @@ def create_device_job_endpoint(device_id: str):
             created_by=admin_name,
             expires_in_seconds=int(expires_in),
         )
-        return jsonify({
-            "status": "dispatched",
-            "job_id": job.id,
-            "device_id": device.device_id,
-            "job_type": job.job_type.value,
-            "job_status": job.status.value,
-            "expires_at": job.expires_at.isoformat(),
-        }), 201
+        return jsonify(
+            {
+                "status": "dispatched",
+                "job_id": job.id,
+                "device_id": device.device_id,
+                "job_type": job.job_type.value,
+                "job_status": job.status.value,
+                "expires_at": job.expires_at.isoformat(),
+            }
+        ), 201
     except ValueError as exc:
         return jsonify({"error": "invalid_job", "message": str(exc)}), 400
 
@@ -270,6 +369,7 @@ def get_device_jobs_endpoint(device_id: str):
         return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
 
     from app.services import job_service
+
     jobs = job_service.get_device_jobs(device.id)
     results = [
         {
@@ -286,9 +386,268 @@ def get_device_jobs_endpoint(device_id: str):
         }
         for j in jobs
     ]
-    return jsonify({
-        "device_id": device.device_id,
-        "count": len(results),
-        "jobs": results,
-    }), 200
+    return jsonify(
+        {
+            "device_id": device.device_id,
+            "count": len(results),
+            "jobs": results,
+        }
+    ), 200
 
+
+@devices_bp.route("/<device_id>/suspend", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def suspend_device_endpoint(device_id: str):
+    """Suspend endpoint, rejecting further agent check-ins."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason", "Administrative suspension")
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+
+    old_status = device.status.value
+    device.status = DeviceStatus.SUSPENDED
+
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.DEVICE_SUSPENDED,
+            entity_type="device",
+            entity_id=device.device_id,
+            old_value={"status": old_status},
+            new_value={"status": DeviceStatus.SUSPENDED.value, "reason": reason},
+        )
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "status": "suspended",
+            "device_id": device.device_id,
+            "device_status": device.status.value,
+            "reason": reason,
+        }
+    ), 200
+
+
+@devices_bp.route("/<device_id>/unsuspend", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def unsuspend_device_endpoint(device_id: str):
+    """Restore suspended endpoint back to ACTIVE."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason", "Administrative restoration")
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+
+    old_status = device.status.value
+    device.status = DeviceStatus.ACTIVE
+
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.IDENTITY_OVERRIDE,
+            entity_type="device",
+            entity_id=device.device_id,
+            old_value={"status": old_status},
+            new_value={"status": DeviceStatus.ACTIVE.value, "reason": reason},
+        )
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "status": "unsuspended",
+            "device_id": device.device_id,
+            "device_status": device.status.value,
+            "reason": reason,
+        }
+    ), 200
+
+
+@devices_bp.route("/<device_id>/retire", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def retire_device_endpoint(device_id: str):
+    """Retire endpoint permanently and close any active asset link."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason", "Endpoint retired")
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+    now = datetime.now(UTC)
+
+    old_status = device.status.value
+    device.status = DeviceStatus.RETIRED
+
+    from app.models import AssetDeviceLink, RelationshipStatus
+
+    active_links = AssetDeviceLink.query.filter_by(
+        device_id=device.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).all()
+    for link in active_links:
+        link.relationship_status = RelationshipStatus.CLOSED
+        link.unlinked_at = now
+        link.reason = f"Device retired: {reason}"
+        db.session.add(
+            AuditLog(
+                actor_id=admin_name,
+                actor_type=ActorType.USER,
+                action=AuditAction.DEVICE_UNLINKED,
+                entity_type="link",
+                entity_id=f"{link.asset.asset_id}:{device.device_id}",
+                new_value={"relationship_status": "CLOSED", "reason": reason},
+            )
+        )
+
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.DEVICE_RETIRED,
+            entity_type="device",
+            entity_id=device.device_id,
+            old_value={"status": old_status},
+            new_value={"status": DeviceStatus.RETIRED.value, "reason": reason},
+        )
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "status": "retired",
+            "device_id": device.device_id,
+            "device_status": device.status.value,
+            "reason": reason,
+        }
+    ), 200
+
+
+@devices_bp.route("/<device_id>/rotate-credential", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def rotate_credential_endpoint(device_id: str):
+    """Initiate administrative credential rotation by issuing a new device-scoped pairing token."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason", "Administrative key rotation")
+
+    from app.models import AssetDeviceLink, RelationshipStatus
+    from app.security.tokens import create_token_for_device
+
+    active_link = AssetDeviceLink.query.filter_by(
+        device_id=device.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).first()
+    asset_id = active_link.asset_id if active_link else None
+
+    raw_token, token_obj = create_token_for_device(
+        device_id=device.id,
+        created_by=admin_name,
+        ttl_hours=24,
+        asset_id=asset_id,
+    )
+
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.CREDENTIAL_ROTATED,
+            entity_type="device",
+            entity_id=device.device_id,
+            old_value={"credential_version": device.credential_version},
+            new_value={"token_id": token_obj.id, "reason": reason},
+        )
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "status": "credential_rotation_initiated",
+            "device_id": device.device_id,
+            "raw_token": raw_token,
+            "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+        }
+    ), 200
+
+
+@devices_bp.route("/<device_id>/revoke", methods=["POST"])
+@require_role(UserRole.INFRA_ADMIN)
+def revoke_device_endpoint(device_id: str):
+    """Revoke endpoint credentials and mark device REVOKED."""
+    device = _find_device(device_id)
+    if not device:
+        return jsonify({"error": "not_found", "message": f"Device {device_id} not found"}), 404
+
+    admin_name = (
+        getattr(g, "current_user", None).username if getattr(g, "current_user", None) else "admin"
+    )
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason", "Administrative revocation")
+    now = datetime.now(UTC)
+
+    old_status = device.status.value
+    device.status = DeviceStatus.REVOKED
+
+    from app.models import AssetDeviceLink, RelationshipStatus
+
+    # Mark credentials revoked
+    for cred in device.credentials:
+        cred.status = "REVOKED"
+        cred.revoked_at = now
+
+    # Close active links
+    active_links = AssetDeviceLink.query.filter_by(
+        device_id=device.id,
+        relationship_status=RelationshipStatus.ACTIVE,
+    ).all()
+    for link in active_links:
+        link.relationship_status = RelationshipStatus.CLOSED
+        link.unlinked_at = now
+        link.reason = f"Device revoked: {reason}"
+        db.session.add(
+            AuditLog(
+                actor_id=admin_name,
+                actor_type=ActorType.USER,
+                action=AuditAction.DEVICE_UNLINKED,
+                entity_type="link",
+                entity_id=f"{link.asset.asset_id}:{device.device_id}",
+                new_value={"relationship_status": "CLOSED", "reason": reason},
+            )
+        )
+
+    db.session.add(
+        AuditLog(
+            actor_id=admin_name,
+            actor_type=ActorType.USER,
+            action=AuditAction.DEVICE_REVOKED,
+            entity_type="device",
+            entity_id=device.device_id,
+            old_value={"status": old_status},
+            new_value={"status": DeviceStatus.REVOKED.value, "reason": reason},
+        )
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "status": "revoked",
+            "device_id": device.device_id,
+            "device_status": device.status.value,
+            "reason": reason,
+        }
+    ), 200

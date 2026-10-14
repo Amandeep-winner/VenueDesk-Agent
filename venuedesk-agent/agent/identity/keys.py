@@ -1,4 +1,5 @@
 """Ed25519 cryptographic key generation, loading, signing, and KeyStore interface."""
+
 import base64
 import os
 import sys
@@ -61,10 +62,14 @@ class TpmKeyStore(KeyStore):
     """TPM-backed key storage stub. Raises NotImplementedError."""
 
     def load_key(self) -> Ed25519PrivateKey | None:
-        raise NotImplementedError("TPM key storage is not supported on this platform/configuration.")
+        raise NotImplementedError(
+            "TPM key storage is not supported on this platform/configuration."
+        )
 
     def save_key(self, key: Ed25519PrivateKey) -> None:
-        raise NotImplementedError("TPM key storage is not supported on this platform/configuration.")
+        raise NotImplementedError(
+            "TPM key storage is not supported on this platform/configuration."
+        )
 
 
 def generate_key() -> Ed25519PrivateKey:

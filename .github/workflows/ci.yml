@@ -2,40 +2,156 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/*, fix/*, improvement/* ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  test:
+  lint-and-types:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Ruff Check
+        run: ruff check .
+      - name: Ruff Format Check
+        run: ruff format --check .
+      - name: Mypy Check
+        run: mypy --ignore-missing-imports venuedesk-backend/app venuedesk-agent/agent
+
+  backend-sqlite:
+    name: Backend Unit & Integration (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Run Backend Tests
+        run: |
+          pytest -m "not postgres" --tb=short venuedesk-backend/tests tests/test_audit_guards.py
+
+  backend-postgres:
+    name: Backend Tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: venuedesk
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: venuedesk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Run Postgres Backend Tests
+        env:
+          TEST_DATABASE_URL: postgresql://venuedesk:testpassword@localhost:5432/venuedesk_test
+        run: |
+          pytest -m "postgres or not postgres" --tb=short venuedesk-backend/tests
+
+  agent-tests:
+    name: Agent Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-
+          python-version: "3.12"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
-
-      - name: Lint with ruff
-        run: |
-          ruff check .
-
-      - name: Run Backend Tests
-        run: |
-          pytest -q --tb=short venuedesk-backend/tests
-
       - name: Run Agent Tests
         run: |
           pytest -q --tb=short venuedesk-agent/tests
+
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Run E2E Tests
+        run: |
+          pytest -q --tb=short tests/e2e
+
+  security-scan:
+    name: Security Scans (Bandit & Pip-Audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Security Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit pip-audit
+      - name: Bandit Scan
+        run: |
+          bandit -r venuedesk-backend/app venuedesk-agent/agent -s B101,B404,B603 -ll
+      - name: Install Dependencies
+        run: |
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Pip-Audit Check
+        run: |
+          pip-audit --desc || true
+
+  coverage-report:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest-cov
+          pip install -e "./venuedesk-backend[dev]" -e "./venuedesk-agent[dev]"
+      - name: Run Tests with Coverage
+        run: |
+          pytest --cov=venuedesk-backend/app --cov=venuedesk-agent/agent --cov-report=xml --cov-report=term
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml

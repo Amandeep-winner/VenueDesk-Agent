@@ -77,3 +77,81 @@ The suite drives an in-process Flask server with authentic Ed25519 cryptographic
 Stages cover asset provisioning, single-use token generation, agent enrollment, physical verification sign-off, heartbeats and telemetry, benign hardware drift, OS reinstall recovery, dual-boot secondary OS discovery, motherboard replacement, clone detection, and revocation.
 Enhanced the fake endpoint simulation tool `tools/fake_endpoint.py` with multi-stage lifecycle simulation and telemetry streaming.
 Published `docs/E2E_REPORT.md` summarizing architecture, validated stages, and operational metrics.
+
+## Identity Hardening & Production Readiness Decisions
+
+| Date | Phase | Decision | Reason |
+| --- | --- | --- | --- |
+| 2026-10-14 | Phase 0 | Established baseline with 133 passing tests across backend, agent, and e2e suites. | Operating rule 3 requires verifying baseline reproducibility before introducing identity refactoring. |
+| 2026-10-14 | Phase 1 | Rewrote device pairing into canonical `pair_device` service function, added partial unique indexes `uq_active_link_per_asset` and `uq_active_link_per_device`, and created duplicate link cleanup runbook. Initial tests reproduced that the legacy code lacked row locks, lacked active device link checks, permitted concurrent duplicate links under race conditions, and constructed links outside a unified module. | Phase 1 requirements mandate single active link database constraints, atomic reassignment, and centralized link creation to prevent asset-device corruption. |
+| 2026-10-14 | Phase 2 | Hardened authentication pipeline with 7-step cryptographic verification order, atomic single-statement nonce insertion and token consumption, centralized `@enforce_policy` decorator with complete endpoint policy registry, `RedactingFilter` for logs, and fail-closed security for all `/api/` routes. | Eliminates check-then-insert race conditions in replay defense, prevents information leakage by returning uniform 401 and 400 responses, and guarantees endpoint access invariants across all device lifecycle states. |
+| 2026-10-14 | Phase 3 | Pinned fingerprint v1 algorithm and golden vector, enforced tri-state field comparison (None == None is UNKNOWN), established HardwareChangeRecord append-only audit trail, and implemented granular hardware change classification. | Eliminates false matches on empty or degraded evidence fields, preserves forensic hardware history across updates, and prevents automatic re-pairing without administrative authorization. |
+| 2026-10-14 | Phase 4 | Implemented multi-OS support with distinct `os_installation_id` tracking, dedicated `device_credentials` table, device-scoped pairing tokens for secondary OSes, and slot-isolated recovery approval. | Prevents dual-boot endpoints from creating duplicate physical devices or cycling asset links, authenticates each OS under independent credentials, and preserves unaffected OS installations during single-OS reinstall recovery. |
+| 2026-10-14 | Phase 5 | Implemented reliable offline operation with SQLite WAL outbox lifecycle, crash recovery, capacity pressure shedding, bounded backoff with full jitter, server-side `processed_events` idempotency deduplication, and mid-outage credential rotation support. | Ensures reliable delivery across extended network outages, guarantees that duplicate deliveries have zero side effects, protects local client queue stability, and prevents outbox stranding during credential rotation. |
+| 2026-10-14 | Phase 6 | Structured comprehensive test suites across unit, integration, and e2e tiers, added synthetic test fixtures, enforced immutable append-only audit log guards, and hardened multi-platform CI pipelines. | Standardizes test categorization and synthetic device topologies, guarantees that audit records can never be modified or deleted via ORM models, and ensures reliable validation across Linux and Windows environments. |
+
+## Phase 3 Hardening Details
+
+Pinned fingerprint version 1 algorithm with golden test vectors to guarantee cross-version hash consistency.
+Missing evidence fields (`None == None`) strictly evaluate to tri-state `UNKNOWN` rather than `MATCH`.
+`UNKNOWN` fields contribute 0 to the similarity score numerator and are excluded from the denominator.
+Established `hardware_change_records` append-only audit table tracking every field deviation and authorization requirement.
+Granular classification categorizes changes into low severity (RAM, GPU, hostname, IP), medium severity (disk), and high severity (motherboard, TPM, multi-anchor conflicts).
+Credential rotation preserves physical device records and active asset links while incrementing credential versions.
+
+## Phase 4 Hardening Details
+
+Each operating system environment generates and maintains a distinct `os_installation_id` UUID stored in local agent storage.
+Dual-boot systems share a single `physical_devices` record linked to a single institutional asset.
+Secondary OS installations enroll using device-scoped tokens (`TokenScope.DEVICE`) generated by administrators.
+Secondary enrollments register distinct credentials in `device_credentials` without generating duplicate physical device records or reassigning asset links.
+The authentication policy inspects active `device_credentials` matching the request credential version and public key, falling back to legacy single-OS credentials when applicable.
+The heartbeat and inventory update routes match and update the specific calling OS installation rather than overwriting sibling installations.
+Admin recovery approval isolates the reinstalled OS slot based on candidate operating system family.
+Only the reinstalled OS installation is marked historical and its credentials revoked.
+Alternative OS installations on the same physical host remain active and undisturbed.
+
+## Phase 5 Hardening Details
+
+The local outbox table enforces a persistent state machine across pending, in-flight, delivered, and permanent failure states.
+On startup, in-flight events older than 60 seconds automatically revert to pending to recover from agent crashes.
+Queue storage operates in SQLite WAL mode with synchronous set to normal and atomic transactional guarantees.
+Buffer pressure sheds lowest-priority oldest telemetry samples first and never drops priority 0 items before time-to-live expiration.
+Corrupted database files are moved aside to timestamped backups while a fresh database is initialized with an outbox reset event.
+Exponential backoff applies full jitter bounded between zero and the computed ceiling, capping delays at five minutes and honoring retry-after headers.
+Server-side idempotency tracks processed event identifiers in `processed_events` with unique composite constraints.
+Server responses acknowledge accepted and duplicate identifiers so the agent can mark events delivered without duplicating database records.
+Queued items are signed dynamically at transmission time rather than enqueue time so credential rotation during network outages does not strand queued messages.
+
+## Phase 6 Hardening Details
+
+Test layouts define dedicated unit, integration, e2e, postgres, and slow execution markers in `pytest.ini` and `pyproject.toml`.
+Shared synthetic fixtures provide reproducible hardware topologies for institutional workstations, missing serial variants, dual-boot setups, and revoked devices.
+SQLAlchemy event listeners on `AuditLog` intercept update and delete events, raising permission errors to guarantee immutable append-only logs.
+The CI workflow configures discrete jobs spanning linting, SQLite backend tests, PostgreSQL 16 container tests, cross-platform agent execution on Linux and Windows, end-to-end workflows, security auditing, and coverage tracking.
+Security scanner suppressions for assert usage in tests and allowlisted subprocess calls are documented in `security/allowlist.md`.
+
+## Phase 7 Hardening Details
+
+Administrator experience is built with server-rendered HTML templates utilizing Bootstrap 5 and Chart.js.
+All mutating actions require valid CSRF tokens and administrative session authentication enforcing role-based access control.
+High-impact operations including suspend, unsuspend, retire, rotate-credential, revoke, and reassign require explicit administrative reasons and typed confirmation.
+Every lifecycle state mutation creates an immutable audit row documenting the actor, action, entity identifier, and state change.
+Device listing uses eager loading with selectinload across inventory and active asset links to eliminate N+1 queries.
+Identifier display rules mask sensitive identifiers, cryptographic secrets, private keys, and serials to preserve confidentiality.
+Endpoint policies in `ENDPOINT_POLICY` explicitly govern all API and UI administrative operations, closing unauthorized access by default.
+
+## Phase 8 Hardening Details
+
+Production database configuration requires PostgreSQL via `DATABASE_URL` and explicitly rejects SQLite unless `ALLOW_SQLITE_PROD=true` is set.
+Alembic migration `b2c3d4e5f6a7` adds composite indexes for `device_events(device_id, occurred_at)`, `physical_devices(status, last_seen)`, and `asset_device_links(asset_id, relationship_status)`.
+Database migration verification on a copied database is enforced by `tools/test_migration_on_copy.py` with foreign key and constraint integrity assertions.
+Retention CLI commands provide scheduled operational pruning for telemetry, expired nonces, and processed idempotency event records.
+Database backup and restore procedures are standardized around `pg_dump` and `pg_restore` and validated via `tools/backup_restore_check.sh`.
+Production server settings enforce `ProxyFix` reverse proxy forwarding headers, HSTS security headers, secure cookies, and maximum request payload limits of two megabytes.
+Rate limiting enforces request budgets on enrollment, recovery, and administrator login endpoints with retry-after headers.
+Agent configuration rejects unencrypted HTTP URLs in production mode unless the explicit `allow_insecure_dev=true` bypass is configured.
+The safe agent update mechanism defaults to notify-only (`auto_update=false`) and requires Ed25519 cryptographic release signature and SHA-256 package hash verification.
+Agent status CLI commands report comprehensive local health diagnostics including queue depth, dropped events count, and error codes.
+Clean uninstaller scripts for Linux and Windows allow administrators to stop and remove agent components and optionally purge state directories.
+The pilot plan and checklist define structured validation scenarios across 5 to 10 machines with rigorous go and no-go gates.

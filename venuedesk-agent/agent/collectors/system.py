@@ -1,4 +1,5 @@
 """System and OS collector with graceful degradation."""
+
 import hashlib
 import logging
 import os
@@ -32,7 +33,14 @@ def _run_cmd(cmd: list[str]) -> str | None:
 def collect_machine_uuid() -> str | None:
     """Collect hardware/chassis machine UUID across Linux and Windows."""
     if sys.platform == "win32":
-        out = _run_cmd(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_ComputerSystemProduct).UUID",
+            ]
+        )
         if out:
             return out
     else:
@@ -51,12 +59,14 @@ def collect_machine_uuid() -> str | None:
 def collect_os_machine_id() -> str | None:
     """Collect OS installation machine ID (e.g. /etc/machine-id or Windows Cryptography MachineGuid)."""
     if sys.platform == "win32":
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography').MachineGuid",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography').MachineGuid",
+            ]
+        )
         if out:
             return out
     else:
@@ -125,12 +135,14 @@ def collect_ram_total_mb() -> int | None:
             logger.debug("psutil.virtual_memory failed: %s", exc)
 
     if sys.platform == "win32":
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)",
+            ]
+        )
         if out:
             try:
                 return int(out.strip())
@@ -152,12 +164,14 @@ def collect_ram_total_mb() -> int | None:
 def collect_bios_version() -> str | None:
     """Collect BIOS firmware version string."""
     if sys.platform == "win32":
-        return _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion",
-        ])
+        return _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion",
+            ]
+        )
     for p in ["/sys/class/dmi/id/bios_version", "/sys/devices/virtual/dmi/id/bios_version"]:
         try:
             path = Path(p)
@@ -173,6 +187,7 @@ def collect_bios_version() -> str | None:
 def collect_tpm_present() -> bool:
     """Determine whether a hardware TPM module is present."""
     from agent.collectors.hardware import collect_tpm_identity
+
     return bool(collect_tpm_identity())
 
 
@@ -207,6 +222,7 @@ def collect_ip_addresses() -> list[str]:
 def collect_mac_addresses() -> list[str]:
     """Collect MAC addresses of physical adapters."""
     from agent.collectors.network import collect_nics
+
     nics = collect_nics()
     macs: set[str] = set()
     for nic in nics:

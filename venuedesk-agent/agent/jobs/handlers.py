@@ -1,4 +1,5 @@
 """Allowlisted remote maintenance and diagnostic job handlers (spec §4.10)."""
+
 import platform
 import re
 import socket
@@ -27,7 +28,9 @@ ALLOWLISTED_DIAGNOSTIC_TARGETS = {
 }
 
 TOKEN_REDACTION_PATTERN = re.compile(r"PAIR-[A-Za-z0-9_\-]+")
-BEARER_REDACTION_PATTERN = re.compile(r"(?i)\b(bearer|token|secret|password|private_key)(?:\s*[:=]|\s+)\s*['\"]?([A-Za-z0-9_\-\.\/+=]{8,})['\"]?")
+BEARER_REDACTION_PATTERN = re.compile(
+    r"(?i)\b(bearer|token|secret|password|private_key)(?:\s*[:=]|\s+)\s*['\"]?([A-Za-z0-9_\-\.\/+=]{8,})['\"]?"
+)
 
 
 def redact_sensitive_text(text: str) -> str:
@@ -51,7 +54,9 @@ def execute_collect_diagnostics(payload: dict[str, Any], config: AgentConfig) ->
     """
     target = payload.get("target", "system")
     if target not in ALLOWLISTED_DIAGNOSTIC_TARGETS:
-        raise ValueError(f"Diagnostic target '{target}' is not allowlisted (allowed: {sorted(ALLOWLISTED_DIAGNOSTIC_TARGETS)})")
+        raise ValueError(
+            f"Diagnostic target '{target}' is not allowlisted (allowed: {sorted(ALLOWLISTED_DIAGNOSTIC_TARGETS)})"
+        )
 
     import psutil
 
@@ -61,7 +66,10 @@ def execute_collect_diagnostics(payload: dict[str, Any], config: AgentConfig) ->
         diag["memory"] = psutil.virtual_memory()._asdict()
         diag["boot_time"] = psutil.boot_time()
     if target in ("storage", "all"):
-        diag["disk_usage"] = {p.mountpoint: psutil.disk_usage(p.mountpoint)._asdict() for p in psutil.disk_partitions(all=False)[:3]}
+        diag["disk_usage"] = {
+            p.mountpoint: psutil.disk_usage(p.mountpoint)._asdict()
+            for p in psutil.disk_partitions(all=False)[:3]
+        }
     if target in ("network", "all"):
         diag["net_io"] = psutil.net_io_counters()._asdict()
     if target in ("agent", "all"):
@@ -108,7 +116,9 @@ def execute_collect_logs(payload: dict[str, Any], config: AgentConfig) -> dict[s
     }
 
 
-def execute_restart_approved_service(payload: dict[str, Any], config: AgentConfig) -> dict[str, Any]:
+def execute_restart_approved_service(
+    payload: dict[str, Any], config: AgentConfig
+) -> dict[str, Any]:
     """Execute RESTART_APPROVED_SERVICE job.
 
     Security check: rejects any service name not in the local config's approved_services allowlist.
@@ -127,7 +137,12 @@ def execute_restart_approved_service(payload: dict[str, Any], config: AgentConfi
     # Cross-platform restart using safe argument list (shell=False)
     system = platform.system().lower()
     if system == "windows":
-        cmd = ["powershell.exe", "-NoProfile", "-Command", f"Restart-Service -Name '{service_name}'"]
+        cmd = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            f"Restart-Service -Name '{service_name}'",
+        ]
     else:
         cmd = ["systemctl", "restart", service_name]
 
@@ -266,4 +281,6 @@ def execute_run_network_diagnostic(payload: dict[str, Any], config: AgentConfig)
             }
 
     else:
-        raise ValueError(f"Unsupported network diagnostic tool '{tool}' (allowed: ping, dns, tcp_connect)")
+        raise ValueError(
+            f"Unsupported network diagnostic tool '{tool}' (allowed: ping, dns, tcp_connect)"
+        )

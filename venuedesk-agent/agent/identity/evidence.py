@@ -1,4 +1,5 @@
 """Hardware identity evidence data structures and anchor extraction."""
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,7 +56,9 @@ class IdentityEvidence:
         """Compute the deterministic SHA-256 fingerprint for this evidence."""
         return compute_fingerprint(self.to_dict(), version=version)
 
-    def to_evidence_payload(self, salt: bytes, version: int = FINGERPRINT_VERSION) -> dict[str, Any]:
+    def to_evidence_payload(
+        self, salt: bytes, version: int = FINGERPRINT_VERSION
+    ) -> dict[str, Any]:
         """Format evidence into salted HMAC hashes and signatures for transmission to control plane."""
         normalized_disks = norm_list(self.disks)
         disk_sig = ",".join(normalized_disks) if normalized_disks else None

@@ -1,4 +1,5 @@
 """Agent endpoint recovery client implementation (spec §4.8)."""
+
 import logging
 import platform
 import time
@@ -32,7 +33,9 @@ def recover_agent(
     """Submit endpoint recovery request following OS reinstall or state loss, and optionally poll for approval."""
     server = (server_url or config.server_url).rstrip("/")
     if server.startswith("http://") and not config.allow_insecure_dev:
-        raise ValueError("Insecure HTTP server URLs are rejected unless allow_insecure_dev is true.")
+        raise ValueError(
+            "Insecure HTTP server URLs are rejected unless allow_insecure_dev is true."
+        )
 
     db_path = Path(config.state_dir) / "agent_state.db"
     db = AgentDatabase(db_path)
@@ -73,6 +76,7 @@ def recover_agent(
         "os": os_info,
         "agent_version": "0.1.0",
         "agent_instance_id": id_store.agent_instance_id,
+        "os_installation_id": id_store.os_installation_id,
     }
 
     with httpx.Client(timeout=15.0) as client:
@@ -93,7 +97,9 @@ def recover_agent(
     logger.info("Waiting for admin approval of recovery for device %s...", device_id)
     with httpx.Client(timeout=10.0) as client:
         while time.time() - start_time < poll_timeout_seconds:
-            status_resp = client.get(f"{server}/api/v1/agents/recover/status", params={"device_id": device_id})
+            status_resp = client.get(
+                f"{server}/api/v1/agents/recover/status", params={"device_id": device_id}
+            )
             if status_resp.status_code == 200:
                 data = status_resp.json()
                 if data.get("status") == "approved":

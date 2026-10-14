@@ -1,4 +1,5 @@
 """Simulates one or more endpoints for integration testing, fleet simulation, and full lifecycle validation."""
+
 import argparse
 import base64
 import hashlib
@@ -18,12 +19,18 @@ def generate_fake_evidence(index: int, identical_hardware: bool = False) -> dict
     disks = ["Samsung SSD 970 EVO 1TB"]
 
     machine_uuid = f"00000000-0000-0000-0000-{index:012x}"
-    bios_serial = f"DELL-SER-{index:04d}" if not identical_hardware else "DELL-SER-BATCH-1"
-    mobo_serial = f"MB-BASE-{index:04d}" if not identical_hardware else "MB-BASE-BATCH-1"
+    bios_serial = (
+        f"DELL-SER-{index:04d}" if not identical_hardware else "DELL-SER-BATCH-1"
+    )
+    mobo_serial = (
+        f"MB-BASE-{index:04d}" if not identical_hardware else "MB-BASE-BATCH-1"
+    )
 
     salt = b"venuedesk-default-salt-32-chars-long!"
+
     def hmac_val(val: str) -> str:
         import hmac
+
         return hmac.new(salt, val.lower().encode(), hashlib.sha256).hexdigest()
 
     return {
@@ -54,7 +61,9 @@ def enroll_fake_endpoint(
     )
     pub_b64 = base64.b64encode(pub_raw).decode("ascii")
 
-    token_sha256 = hashlib.sha256(token.strip().encode("utf-8")).hexdigest() if token else ""
+    token_sha256 = (
+        hashlib.sha256(token.strip().encode("utf-8")).hexdigest() if token else ""
+    )
     ts = int(time.time())
     nonce = uuid.uuid4().hex
     msg = f"enroll\n{token_sha256}\n{ts}\n{nonce}".encode()
@@ -86,7 +95,9 @@ def enroll_fake_endpoint(
             "name": "Ubuntu",
             "version": "24.04",
             "architecture": "x86_64",
-            "os_machine_id_hash": hashlib.sha256(f"os-mid-{index}".encode()).hexdigest(),
+            "os_machine_id_hash": hashlib.sha256(
+                f"os-mid-{index}".encode()
+            ).hexdigest(),
         },
         "agent_version": "0.1.0",
         "agent_instance_id": inst_id,
@@ -97,14 +108,23 @@ def enroll_fake_endpoint(
         resp = client.post(f"{server_url}/api/v1/agents/enroll", json=payload)
 
     if resp.status_code != 200:
-        raise RuntimeError(f"Fake endpoint {index} failed enrollment ({resp.status_code}): {resp.text}")
+        raise RuntimeError(
+            f"Fake endpoint {index} failed enrollment ({resp.status_code}): {resp.text}"
+        )
 
     res_json = resp.json()
     res_json["_agent_instance_id"] = inst_id
     return res_json, priv_key
 
 
-def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: bytes, key_ver: int = 1) -> dict[str, str]:
+def sign_req(
+    dev_id: str,
+    key: Ed25519PrivateKey,
+    method: str,
+    path: str,
+    body: bytes,
+    key_ver: int = 1,
+) -> dict[str, str]:
     """Generate authenticated request headers."""
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
@@ -120,35 +140,49 @@ def sign_req(dev_id: str, key: Ed25519PrivateKey, method: str, path: str, body: 
     }
 
 
-def send_fake_heartbeat(server_url: str, dev_id: str, key: Ed25519PrivateKey, inst_id: str) -> dict:
+def send_fake_heartbeat(
+    server_url: str, dev_id: str, key: Ed25519PrivateKey, inst_id: str
+) -> dict:
     """Send authenticated heartbeat."""
     body = json.dumps({"agent_instance_id": inst_id}).encode()
     headers = sign_req(dev_id, key, "POST", "/api/v1/agents/heartbeat", body)
     headers["Content-Type"] = "application/json"
     with httpx.Client(timeout=10.0) as client:
-        resp = client.post(f"{server_url.rstrip('/')}/api/v1/agents/heartbeat", data=body, headers=headers)
+        resp = client.post(
+            f"{server_url.rstrip('/')}/api/v1/agents/heartbeat",
+            data=body,
+            headers=headers,
+        )
     return resp.json() if resp.status_code == 200 else {}
 
 
-def send_fake_telemetry(server_url: str, dev_id: str, key: Ed25519PrivateKey, count: int = 5) -> int:
+def send_fake_telemetry(
+    server_url: str, dev_id: str, key: Ed25519PrivateKey, count: int = 5
+) -> int:
     """Send synthetic telemetry samples."""
     samples = []
     now = int(time.time())
     for i in range(count):
-        samples.append({
-            "timestamp": now - (count - i) * 60,
-            "cpu_percent": 15.0 + (i * 4.5) % 60,
-            "memory_percent": 40.0 + (i * 2.5) % 40,
-            "disk_percent": 50.0,
-            "network_rx": 5000 + i * 100,
-            "network_tx": 2500 + i * 50,
-            "uptime": 3600 + i * 60,
-        })
+        samples.append(
+            {
+                "timestamp": now - (count - i) * 60,
+                "cpu_percent": 15.0 + (i * 4.5) % 60,
+                "memory_percent": 40.0 + (i * 2.5) % 40,
+                "disk_percent": 50.0,
+                "network_rx": 5000 + i * 100,
+                "network_tx": 2500 + i * 50,
+                "uptime": 3600 + i * 60,
+            }
+        )
     body = json.dumps({"samples": samples}).encode()
     headers = sign_req(dev_id, key, "POST", "/api/v1/agents/telemetry", body)
     headers["Content-Type"] = "application/json"
     with httpx.Client(timeout=10.0) as client:
-        resp = client.post(f"{server_url.rstrip('/')}/api/v1/agents/telemetry", data=body, headers=headers)
+        resp = client.post(
+            f"{server_url.rstrip('/')}/api/v1/agents/telemetry",
+            data=body,
+            headers=headers,
+        )
     return resp.status_code
 
 
@@ -165,9 +199,13 @@ def run_full_scenario(server_url: str) -> None:
         res, key = enroll_fake_endpoint(server_url, index=99, token=None)
         dev_id = res["device_id"]
         inst_id = res["_agent_instance_id"]
-        print(f"      Enrolled unclaimed device: {dev_id} (Status: {res.get('status')})")
+        print(
+            f"      Enrolled unclaimed device: {dev_id} (Status: {res.get('status')})"
+        )
     except Exception as exc:  # noqa: BLE001
-        print(f"      Unclaimed mode note: {exc} (Enable ALLOW_UNCLAIMED_ENROLLMENT if testing unclaimed)")
+        print(
+            f"      Unclaimed mode note: {exc} (Enable ALLOW_UNCLAIMED_ENROLLMENT if testing unclaimed)"
+        )
         return
 
     # 2. Heartbeats
@@ -193,18 +231,26 @@ def run_full_scenario(server_url: str) -> None:
     inv_headers = sign_req(dev_id, key, "POST", "/api/v1/agents/inventory", inv_body)
     inv_headers["Content-Type"] = "application/json"
     with httpx.Client(timeout=10.0) as client:
-        inv_resp = client.post(f"{server_url.rstrip('/')}/api/v1/agents/inventory", data=inv_body, headers=inv_headers)
+        inv_resp = client.post(
+            f"{server_url.rstrip('/')}/api/v1/agents/inventory",
+            data=inv_body,
+            headers=inv_headers,
+        )
     print(f"      Inventory reconciliation status: {inv_resp.status_code}")
 
     # 5. OS Reinstall Recovery simulation
     print("[5/6] Simulating OS reinstall recovery request...")
     new_key = Ed25519PrivateKey.generate()
     new_pub_b64 = base64.b64encode(
-        new_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        new_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
     ).decode("ascii")
     r_ts = int(time.time())
     r_nonce = uuid.uuid4().hex
-    r_proof = base64.b64encode(new_key.sign(f"recover\n{r_ts}\n{r_nonce}".encode())).decode("ascii")
+    r_proof = base64.b64encode(
+        new_key.sign(f"recover\n{r_ts}\n{r_nonce}".encode())
+    ).decode("ascii")
     rec_body = {
         "device_public_key": new_pub_b64,
         "proof_of_possession": r_proof,
@@ -212,10 +258,18 @@ def run_full_scenario(server_url: str) -> None:
         "nonce": r_nonce,
         "identity_evidence": upd_ev,
         "agent_instance_id": "inst-recovered-99",
-        "os": {"family": "LINUX", "name": "Ubuntu", "version": "24.04.1", "architecture": "x86_64", "os_machine_id_hash": "mid-rec-99"},
+        "os": {
+            "family": "LINUX",
+            "name": "Ubuntu",
+            "version": "24.04.1",
+            "architecture": "x86_64",
+            "os_machine_id_hash": "mid-rec-99",
+        },
     }
     with httpx.Client(timeout=10.0) as client:
-        rec_resp = client.post(f"{server_url.rstrip('/')}/api/v1/agents/recover", json=rec_body)
+        rec_resp = client.post(
+            f"{server_url.rstrip('/')}/api/v1/agents/recover", json=rec_body
+        )
     print(f"      Recovery endpoint response ({rec_resp.status_code}): {rec_resp.text}")
 
     print("=" * 60)
@@ -225,12 +279,28 @@ def run_full_scenario(server_url: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="VenueDesk Fake Endpoint Simulator")
-    parser.add_argument("--server", default="http://127.0.0.1:5001", help="Control plane server URL")
-    parser.add_argument("--count", type=int, default=1, help="Number of endpoints to simulate")
-    parser.add_argument("--token", default=None, help="Pairing token (for single count)")
-    parser.add_argument("--unclaimed", action="store_true", help="Enroll in unclaimed mode without token")
-    parser.add_argument("--telemetry", action="store_true", help="Send telemetry samples for each endpoint")
-    parser.add_argument("--scenario", choices=["all"], default=None, help="Run full scenario simulation")
+    parser.add_argument(
+        "--server", default="http://127.0.0.1:5001", help="Control plane server URL"
+    )
+    parser.add_argument(
+        "--count", type=int, default=1, help="Number of endpoints to simulate"
+    )
+    parser.add_argument(
+        "--token", default=None, help="Pairing token (for single count)"
+    )
+    parser.add_argument(
+        "--unclaimed",
+        action="store_true",
+        help="Enroll in unclaimed mode without token",
+    )
+    parser.add_argument(
+        "--telemetry",
+        action="store_true",
+        help="Send telemetry samples for each endpoint",
+    )
+    parser.add_argument(
+        "--scenario", choices=["all"], default=None, help="Run full scenario simulation"
+    )
     args = parser.parse_args()
 
     if args.scenario == "all":

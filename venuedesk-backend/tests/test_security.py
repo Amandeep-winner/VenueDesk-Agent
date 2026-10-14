@@ -1,4 +1,5 @@
 """Comprehensive unit tests for security primitives, signatures, tokens, and replay defense."""
+
 import base64
 import time
 import uuid
@@ -40,7 +41,7 @@ def test_device_keypair(app):
             device_id=generate_device_id(),
             device_public_key=pub_b64,
             status=DeviceStatus.ACTIVE,
-            credential_version=1
+            credential_version=1,
         )
         db.session.add(device)
         db.session.commit()
@@ -123,7 +124,7 @@ def test_signature_verification_flow(app, client, test_device_keypair):
         "X-Nonce": nonce,
         "X-Key-Version": "1",
         "X-Signature": sig,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # 1. Valid request
@@ -166,7 +167,7 @@ def test_clock_skew_rejected(app, client, test_device_keypair):
 
     res = client.get("/test-skew", headers=headers)
     assert res.status_code == 401
-    assert res.get_json()["error"] == "clock_skew"
+    assert res.get_json()["error"] == "unauthorized"
 
 
 def test_blocked_device_returns_403(app, client, test_device_keypair):

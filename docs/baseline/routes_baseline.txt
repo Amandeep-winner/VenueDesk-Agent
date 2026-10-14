@@ -1,0 +1,44 @@
+Method   | Path                                                                     | Endpoint                                 | Auth Decorator Found? | Roles / States           
+---------+--------------------------------------------------------------------------+------------------------------------------+-----------------------+--------------------------
+GET      | /admin/infrastructure/                                                   | admin_infra.devices_list                 | require_ui_role       | infra_admin, infra_viewer
+GET      | /admin/infrastructure/assets                                             | admin_infra.assets_list                  | require_ui_role       | infra_admin, infra_viewer
+POST     | /admin/infrastructure/assets/<asset_id>/pairing-token                    | admin_infra.generate_asset_token_view    | require_ui_role       | infra_admin              
+GET      | /admin/infrastructure/audit                                              | admin_infra.audit_logs_view              | require_ui_role       | infra_admin, infra_viewer
+GET      | /admin/infrastructure/devices                                            | admin_infra.devices_list                 | require_ui_role       | infra_admin, infra_viewer
+GET      | /admin/infrastructure/devices/<device_id>                                | admin_infra.device_detail                | require_ui_role       | infra_admin, infra_viewer
+POST     | /admin/infrastructure/devices/<device_id>/jobs/dispatch                  | admin_infra.dispatch_device_job          | require_ui_role       | infra_admin              
+GET      | /admin/infrastructure/devices/<device_id>/verify                         | admin_infra.verify_device_view           | require_ui_role       | infra_admin              
+POST     | /admin/infrastructure/devices/<device_id>/verify                         | admin_infra.verify_device_submit         | require_ui_role       | infra_admin              
+GET      | /admin/infrastructure/identity-queue                                     | admin_infra.identity_queue               | require_ui_role       | infra_admin, infra_viewer
+POST     | /admin/infrastructure/identity-queue/<device_id>/approve-hardware-change | admin_infra.approve_hardware_change_view | require_ui_role       | infra_admin              
+POST     | /admin/infrastructure/identity-queue/<device_id>/approve-recovery        | admin_infra.approve_recovery_view        | require_ui_role       | infra_admin              
+GET,POST | /admin/infrastructure/login                                              | admin_infra.login                        | csrf_protect          | session                  
+GET      | /admin/infrastructure/logout                                             | admin_infra.logout                       | none                  | none                     
+GET      | /admin/infrastructure/unclaimed                                          | admin_infra.unclaimed_devices            | require_ui_role       | infra_admin, infra_viewer
+POST     | /admin/infrastructure/unclaimed/<device_id>/pair                         | admin_infra.pair_unclaimed_view          | require_ui_role       | infra_admin              
+POST     | /api/v1/admin/assets/<asset_id>/pairing-token                            | assets.generate_pairing_token_endpoint   | require_role          | infra_admin              
+DELETE   | /api/v1/admin/assets/<asset_id>/pairing-token                            | assets.revoke_pairing_token_endpoint     | require_role          | infra_admin              
+POST     | /api/v1/admin/devices/<device_id>/approve-hardware-change                | devices.approve_hardware_change_endpoint | require_role          | infra_admin              
+POST     | /api/v1/admin/devices/<device_id>/approve-recovery                       | devices.approve_recovery_endpoint        | require_role          | infra_admin              
+POST     | /api/v1/admin/devices/<device_id>/jobs                                   | devices.create_device_job_endpoint       | require_role          | infra_admin              
+GET      | /api/v1/admin/devices/<device_id>/jobs                                   | devices.get_device_jobs_endpoint         | require_role          | infra_admin, infra_viewer
+POST     | /api/v1/admin/devices/<device_id>/pair                                   | devices.pair_device_endpoint             | require_role          | infra_admin              
+POST     | /api/v1/admin/devices/<device_id>/replace-endpoint                       | devices.replace_endpoint_endpoint        | require_role          | infra_admin              
+GET      | /api/v1/admin/devices/<device_id>/telemetry                              | devices.get_telemetry_endpoint           | require_role          | infra_admin, infra_viewer
+POST     | /api/v1/admin/devices/<device_id>/verify                                 | devices.verify_device_endpoint           | require_role          | infra_admin              
+GET      | /api/v1/admin/devices/recovery-requests                                  | devices.get_recovery_requests_endpoint   | require_role          | infra_admin, infra_viewer
+GET      | /api/v1/admin/devices/unclaimed                                          | devices.get_unclaimed_devices_endpoint   | require_role          | infra_admin, infra_viewer
+GET      | /api/v1/agents/config                                                    | agents.get_config                        | require_device_auth   | device                   
+POST     | /api/v1/agents/enroll                                                    | agents.enroll                            | none                  | none                     
+POST     | /api/v1/agents/heartbeat                                                 | agents.heartbeat                         | require_device_auth   | device                   
+POST     | /api/v1/agents/identity                                                  | agents.post_identity                     | require_device_auth   | device                   
+POST     | /api/v1/agents/inventory                                                 | agents.post_inventory                    | require_device_auth   | device                   
+GET      | /api/v1/agents/jobs                                                      | agents.poll_jobs                         | require_device_auth   | device                   
+POST     | /api/v1/agents/jobs/<int:job_id>/result                                  | agents.post_job_result                   | require_device_auth   | device                   
+POST     | /api/v1/agents/jobs/poll                                                 | agents.poll_jobs                         | require_device_auth   | device                   
+POST     | /api/v1/agents/recover                                                   | agents.recover                           | none                  | none                     
+GET      | /api/v1/agents/recover/status                                            | agents.recover_status                    | none                  | none                     
+POST     | /api/v1/agents/rotate-credential                                         | agents.rotate_credential                 | require_device_auth   | device                   
+POST     | /api/v1/agents/telemetry                                                 | agents.post_telemetry                    | require_device_auth   | device                   
+GET      | /healthz                                                                 | health_check                             | none                  | none                     
+GET      | /static/<path:filename>                                                  | static                                   | none                  | none                     

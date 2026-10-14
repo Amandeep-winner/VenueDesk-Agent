@@ -1,4 +1,5 @@
 """System services collector with graceful degradation."""
+
 import logging
 import subprocess
 import sys
@@ -33,12 +34,14 @@ def collect_services() -> list[dict[str, Any]]:
                 for s in psutil.win_service_iter():
                     try:
                         d = s.as_dict()
-                        services.append({
-                            "name": d.get("name", "unknown"),
-                            "display_name": d.get("display_name"),
-                            "status": d.get("status"),
-                            "start_type": d.get("start_type"),
-                        })
+                        services.append(
+                            {
+                                "name": d.get("name", "unknown"),
+                                "display_name": d.get("display_name"),
+                                "status": d.get("status"),
+                                "start_type": d.get("start_type"),
+                            }
+                        )
                     except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
                         continue
                 if services:
@@ -47,25 +50,30 @@ def collect_services() -> list[dict[str, Any]]:
                 logger.debug("psutil.win_service_iter failed: %s", exc)
 
         # Fallback to PowerShell
-        out = _run_cmd([
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-Service | Select-Object -Property Name, Status, StartType | ConvertTo-Json -Compress",
-        ])
+        out = _run_cmd(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-Service | Select-Object -Property Name, Status, StartType | ConvertTo-Json -Compress",
+            ]
+        )
         if out:
             import json
+
             try:
                 data = json.loads(out)
                 if isinstance(data, dict):
                     data = [data]
                 for item in data:
-                    services.append({
-                        "name": item.get("Name", "unknown"),
-                        "display_name": item.get("Name"),
-                        "status": str(item.get("Status")),
-                        "start_type": str(item.get("StartType")),
-                    })
+                    services.append(
+                        {
+                            "name": item.get("Name", "unknown"),
+                            "display_name": item.get("Name"),
+                            "status": str(item.get("Status")),
+                            "start_type": str(item.get("StartType")),
+                        }
+                    )
                 return services
             except (json.JSONDecodeError, TypeError) as exc:
                 logger.debug("Failed parsing Get-Service JSON: %s", exc)
@@ -79,10 +87,12 @@ def collect_services() -> list[dict[str, Any]]:
             if len(parts) >= 4:
                 svc_name = parts[0]
                 status = parts[3]
-                services.append({
-                    "name": svc_name,
-                    "display_name": svc_name,
-                    "status": status,
-                    "start_type": parts[2] if len(parts) > 2 else "unknown",
-                })
+                services.append(
+                    {
+                        "name": svc_name,
+                        "display_name": svc_name,
+                        "status": status,
+                        "start_type": parts[2] if len(parts) > 2 else "unknown",
+                    }
+                )
     return services

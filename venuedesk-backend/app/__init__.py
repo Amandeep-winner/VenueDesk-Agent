@@ -1,4 +1,5 @@
 """Application factory for VenueDesk Control Plane Backend."""
+
 import os
 
 from flask import Flask, jsonify
@@ -9,7 +10,7 @@ from app.extensions import db, migrate
 from app.security.csrf import get_csrf_token
 
 
-def create_app(config_name=None):
+def create_app(config_name=None, test_config=None):
     """Create and configure the Flask application instance."""
     if config_name is None:
         config_name = os.getenv("FLASK_ENV", "development")
@@ -17,35 +18,77 @@ def create_app(config_name=None):
     flask_app = Flask(__name__)
     config_obj = config_by_name.get(config_name, config_by_name["default"])
     flask_app.config.from_object(config_obj)
+    if test_config:
+        flask_app.config.update(test_config)
+
+    # Validate production configuration if running in production mode
+    if config_name == "production" and not test_config and hasattr(config_obj, "validate"):
+        config_obj.validate()
+
+    # Configure ProxyFix for reverse proxy deployments (SSL termination, real client IP)
+    if flask_app.config.get("PROXYFIX_ENABLED"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        flask_app.wsgi_app = ProxyFix(
+            flask_app.wsgi_app,
+            x_for=int(os.getenv("PROXYFIX_X_FOR", "1")),
+            x_proto=int(os.getenv("PROXYFIX_X_PROTO", "1")),
+            x_host=int(os.getenv("PROXYFIX_X_HOST", "1")),
+            x_port=int(os.getenv("PROXYFIX_X_PORT", "1")),
+            x_prefix=int(os.getenv("PROXYFIX_X_PREFIX", "1")),
+        )
 
     # Initialize extensions
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)
 
+    # Attach redaction logging filter and configure JSON logging if requested
+    import logging
+
+    from app.logging_filters import RedactingFilter
+
+    redact_filter = RedactingFilter()
+    flask_app.logger.addFilter(redact_filter)
+    logging.getLogger().addFilter(redact_filter)
+
     # Register Jinja global helpers
     flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
     flask_app.jinja_env.globals["hasattr"] = hasattr
 
+    # Enforce standard security headers
+    @flask_app.after_request
+    def set_security_headers(response):
+        if flask_app.config.get("HSTS_ENABLED"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
     # Health check route
     @flask_app.route("/healthz", methods=["GET"])
     def health_check():
-        return jsonify({
-            "status": "ok",
-            "service": "venuedesk-backend",
-            "version": "0.1.0",
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "service": "venuedesk-backend",
+                "version": "0.1.0",
+            }
+        ), 200
 
     # Register Blueprints
     from app.api.admin_infra import admin_infra_bp
     from app.api.agents import agents_bp
     from app.api.assets import assets_bp
     from app.api.devices import devices_bp
+
     flask_app.register_blueprint(agents_bp)
     flask_app.register_blueprint(assets_bp)
     flask_app.register_blueprint(devices_bp)
     flask_app.register_blueprint(admin_infra_bp)
 
     from app.cli import register_cli_commands
+
     register_cli_commands(flask_app)
 
     return flask_app

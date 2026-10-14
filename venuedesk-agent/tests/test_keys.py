@@ -1,4 +1,5 @@
 """Unit tests for agent Ed25519 keys, keystores, and golden image safety."""
+
 import base64
 import os
 import sys

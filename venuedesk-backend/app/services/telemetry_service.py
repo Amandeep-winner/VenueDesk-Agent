@@ -1,4 +1,5 @@
 """Telemetry service for high-frequency metrics recording, querying, and retention pruning."""
+
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -43,7 +44,9 @@ def record_telemetry(device_id: int, samples: list[dict[str, Any]]) -> int:
             uptime=float(s.get("uptime", 0.0)),
             load_average=float(s["load_average"]) if s.get("load_average") is not None else None,
             gpu_percent=float(s["gpu_percent"]) if s.get("gpu_percent") is not None else None,
-            gpu_mem_percent=float(s["gpu_mem_percent"]) if s.get("gpu_mem_percent") is not None else None,
+            gpu_mem_percent=float(s["gpu_mem_percent"])
+            if s.get("gpu_mem_percent") is not None
+            else None,
             temperature_c=float(s["temperature_c"]) if s.get("temperature_c") is not None else None,
         )
         records.append(rec)
@@ -57,7 +60,11 @@ def record_telemetry(device_id: int, samples: list[dict[str, Any]]) -> int:
 def purge_telemetry(older_than_days: int = 30) -> int:
     """Purge telemetry records older than the specified retention threshold."""
     cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
-    deleted = db.session.query(Telemetry).filter(Telemetry.timestamp < cutoff).delete(synchronize_session=False)
+    deleted = (
+        db.session.query(Telemetry)
+        .filter(Telemetry.timestamp < cutoff)
+        .delete(synchronize_session=False)
+    )
     db.session.commit()
     logger.info("Purged %d telemetry records older than %d days", deleted, older_than_days)
     return deleted

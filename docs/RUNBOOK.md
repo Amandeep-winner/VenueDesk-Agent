@@ -193,3 +193,71 @@ Request nonces are opportunistically pruned on writes and can be cleaned via CLI
 ```bash
 flask purge-nonces
 ```
+
+## 13. Duplicate Active Link Detection and Cleanup
+
+Before applying migrations that enforce database-level partial unique indexes on `asset_device_links`, ensure no duplicate ACTIVE links exist.
+Run the detection tool from the repository root:
+
+```bash
+python tools/find_duplicate_links.py
+```
+
+If duplicate ACTIVE links are detected, follow this remediation procedure:
+1. Identify the conflicting device IDs and asset IDs listed in the tool output.
+2. For each conflict, consult physical inventory records to determine which link reflects the current physical placement.
+3. For obsolete active links, close the relationship in the database by setting `relationship_status = 'CLOSED'`, `unlinked_at = NOW()`, and `reason = 'Manual resolution of duplicate active links prior to hardening migration'`.
+4. Re-run `python tools/find_duplicate_links.py` to confirm that zero duplicate ACTIVE links remain.
+5. Apply database migrations using `flask db upgrade`.
+
+## 14. Database Backup, Disaster Recovery & Safe Updates
+
+### 14.1 PostgreSQL Backup and Restore Procedure
+
+Production environments must use PostgreSQL with regular automated logical backups using `pg_dump`.
+To generate a compressed, custom-format database backup:
+
+```bash
+pg_dump --format=custom --no-owner --no-privileges --dbname="${DATABASE_URL}" --file="/var/backups/venuedesk/venuedesk_$(date +%Y%m%d_%H%M%S).dump"
+```
+
+To restore from a backup file into a fresh database:
+
+```bash
+pg_restore --clean --if-exists --no-owner --no-privileges --dbname="${DATABASE_URL}" /var/backups/venuedesk/venuedesk_backup.dump
+```
+
+Verify backup and restore integrity using the automated verification script:
+
+```bash
+bash tools/backup_restore_check.sh
+```
+
+### 14.2 Idempotency and Retention Pruning
+
+In addition to telemetry and nonce pruning, server-side idempotency records must be periodically purged.
+Purge processed event records older than the outbox retention margin:
+
+```bash
+flask purge-processed-events --older-than-days 2
+```
+
+### 14.3 Safe Agent Update Mechanism
+
+VenueDesk implements a cryptographic, signature-verified update model.
+By default, the update policy is strictly notify-only (`auto_update=false`).
+When a new agent release is published, the administrator dashboard displays an update indicator.
+Workstation updates are executed using the administrator installation script, which verifies package integrity against the official Ed25519 release signing key.
+The agent strictly rejects unsigned or hash-mismatched release packages.
+
+### 14.4 Database User Least Privilege
+
+The production PostgreSQL database user configured in `DATABASE_URL` should possess only standard DDL and DML permissions on the application schema.
+Do not configure the application with the PostgreSQL superuser (`postgres`).
+Grant `CONNECT`, `CREATE`, `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on tables and sequences in the `venuedesk` schema.
+
+### 14.5 CI and Branch Protection
+
+The main development and release branches enforce GitHub branch protection rules.
+All discrete CI workflow jobs must pass before merging, including SQLite unit/integration, PostgreSQL service container tests, Ubuntu and Windows agent suites, and security scans.
+Direct pushes to protected branches are disabled.

@@ -1,4 +1,5 @@
 """Unit tests for collector graceful degradation."""
+
 import subprocess
 from unittest.mock import patch
 
@@ -93,4 +94,3 @@ def test_collect_full_inventory_and_telemetry():
     assert "disk_percent" in telem
     assert "uptime" in telem
     assert "timestamp" in telem
-
